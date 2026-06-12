@@ -16,8 +16,9 @@ export async function GET() {
     }
 
     const teachers = await Teacher.find({ institute_id: authUser.institute_id })
-      .select("user_id institute_id")
+      .select("user_id institute_id subjects")
       .populate("user_id", "name phoneOrEmail")
+      .populate("subjects", "name")
       .lean();
 
     return NextResponse.json(teachers);
@@ -33,20 +34,29 @@ export async function POST(req) {
     const authUser = await requireRole(["ADMIN"]);
 
     const body = await req.json();
-    const { name, email, phone } = body;
+    const { name, email, phone, subjects } = body;
 
     const finalContact = email?.trim() ? email.trim() : phone?.trim();
 
-    const user = await User.create({
-      name,
-      phoneOrEmail: finalContact,
-      role: "TEACHER",
-      institute_id: authUser.institute_id,
-    });
+    let user = await User.findOne({ phoneOrEmail: new RegExp(`^${finalContact}$`, "i") });
+    if (user) {
+      if (user.role !== "TEACHER" && user.role !== "ADMIN") {
+        user.role = "TEACHER";
+        await user.save();
+      }
+    } else {
+      user = await User.create({
+        name,
+        phoneOrEmail: finalContact,
+        role: "TEACHER",
+        institute_id: authUser.institute_id,
+      });
+    }
 
     const teacher = await Teacher.create({
       user_id: user._id,
       institute_id: authUser.institute_id,
+      subjects: subjects || []
     });
 
     return NextResponse.json(teacher, { status: 201 });

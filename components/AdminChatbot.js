@@ -5,7 +5,7 @@ import { MessageSquare, X, Send, Bot, User, Loader2, Sparkles } from "lucide-rea
 import ReactMarkdown from "react-markdown";
 
 const FAQS = [
-  { label: "Best Batch?" },
+  { label: "Best Section?" },
   { label: "Fee Defaulters?" },
   { label: "Revenue Stats" },
   { label: "Absentee Stats" }

@@ -3,8 +3,9 @@ import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import User from "@/models/User";
 import Institute from "@/models/Institute";
+import Class from "@/models/Class";
 import Course from "@/models/Course";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Student from "@/models/Student";
 import Teacher from "@/models/Teacher";
 import Fee from "@/models/Fee";
@@ -23,8 +24,9 @@ export async function POST(req) {
     // Check if the user wants to force reset (we can just assume yes from the prompt context, but let's always clear for a clean slate)
     await Student.deleteMany({ institute_id: iid });
     await Teacher.deleteMany({ institute_id: iid });
+    await Class.deleteMany({ institute_id: iid });
     await Course.deleteMany({ institute_id: iid });
-    await Batch.deleteMany({ institute_id: iid });
+    await Section.deleteMany({ institute_id: iid });
     await Fee.deleteMany({ institute_id: iid });
     await Attendance.deleteMany({ institute_id: iid });
     await Test.deleteMany({ institute_id: iid });
@@ -41,26 +43,28 @@ export async function POST(req) {
     const t1 = await Teacher.create({ user_id: t1User._id, institute_id: iid });
     const t2 = await Teacher.create({ user_id: t2User._id, institute_id: iid });
 
-    // 2. Courses
+    // 2. Classes & Courses
+    const classJEE = await Class.create({ name: "Class 11", institute_id: iid });
+    const classNEET = await Class.create({ name: "Class 12", institute_id: iid });
     const courseJEE = await Course.create({ name: "JEE Advanced", institute_id: iid });
     const courseNEET = await Course.create({ name: "NEET Medical", institute_id: iid });
 
-    // 3. Batches
-    const batchJEE = await Batch.create({ name: "JEE Top Batch", course_id: courseJEE._id, teacher_id: t1._id, timing: "8:00 AM - 10:00 AM", institute_id: iid });
-    const batchNEET = await Batch.create({ name: "NEET Morning", course_id: courseNEET._id, teacher_id: t2._id, timing: "10:00 AM - 12:00 PM", institute_id: iid });
+    // 3. Sections
+    const sectionJEE = await Section.create({ name: "JEE Top Section", class_id: classJEE._id, teacher_id: t1._id, timing: "8:00 AM - 10:00 AM", institute_id: iid });
+    const sectionNEET = await Section.create({ name: "NEET Morning", class_id: classNEET._id, teacher_id: t2._id, timing: "10:00 AM - 12:00 PM", institute_id: iid });
 
     // 4. Students (Exactly 10)
     const studentData = [
-      { name: "Victor Camper", phone: "campervictor52@gmail.com", parent: "Mr. Camper", parentPhone: "+911000000001", batch: batchJEE._id },
-      { name: "Kavya Singh", phone: "kavya@test.com", parent: "Vikram Singh", parentPhone: "+911000000002", batch: batchJEE._id },
-      { name: "Vihaan Iyer", phone: "vihaan@test.com", parent: "Rajesh Iyer", parentPhone: "+911000000003", batch: batchJEE._id },
-      { name: "Ananya Sharma", phone: "ananya@test.com", parent: "Deepak Sharma", parentPhone: "+911000000004", batch: batchJEE._id },
-      { name: "Kabir Dubey", phone: "kabir@test.com", parent: "Amit Dubey", parentPhone: "+911000000005", batch: batchJEE._id },
-      { name: "Mira Patel", phone: "mira@test.com", parent: "Suresh Patel", parentPhone: "+911000000006", batch: batchNEET._id },
-      { name: "Vivaan Joshi", phone: "vivaan@test.com", parent: "Karan Joshi", parentPhone: "+911000000007", batch: batchNEET._id },
-      { name: "Sia Gupta", phone: "sia@test.com", parent: "Ravi Gupta", parentPhone: "+911000000008", batch: batchNEET._id },
-      { name: "Reyansh Reddy", phone: "reyansh@test.com", parent: "Raman Reddy", parentPhone: "+911000000009", batch: batchNEET._id },
-      { name: "Zara Khan", phone: "zara@test.com", parent: "Imran Khan", parentPhone: "+911000000010", batch: batchNEET._id }
+      { name: "Victor Camper", phone: "campervictor52@gmail.com", parent: "Mr. Camper", parentPhone: "+911000000001", section: sectionJEE._id },
+      { name: "Kavya Singh", phone: "kavya@test.com", parent: "Vikram Singh", parentPhone: "+911000000002", section: sectionJEE._id },
+      { name: "Vihaan Iyer", phone: "vihaan@test.com", parent: "Rajesh Iyer", parentPhone: "+911000000003", section: sectionJEE._id },
+      { name: "Ananya Sharma", phone: "ananya@test.com", parent: "Deepak Sharma", parentPhone: "+911000000004", section: sectionJEE._id },
+      { name: "Kabir Dubey", phone: "kabir@test.com", parent: "Amit Dubey", parentPhone: "+911000000005", section: sectionJEE._id },
+      { name: "Mira Patel", phone: "mira@test.com", parent: "Suresh Patel", parentPhone: "+911000000006", section: sectionNEET._id },
+      { name: "Vivaan Joshi", phone: "vivaan@test.com", parent: "Karan Joshi", parentPhone: "+911000000007", section: sectionNEET._id },
+      { name: "Sia Gupta", phone: "sia@test.com", parent: "Ravi Gupta", parentPhone: "+911000000008", section: sectionNEET._id },
+      { name: "Reyansh Reddy", phone: "reyansh@test.com", parent: "Raman Reddy", parentPhone: "+911000000009", section: sectionNEET._id },
+      { name: "Zara Khan", phone: "zara@test.com", parent: "Imran Khan", parentPhone: "+911000000010", section: sectionNEET._id }
     ];
 
     const students = [];
@@ -69,7 +73,7 @@ export async function POST(req) {
       admissionDate.setDate(admissionDate.getDate() - Math.floor(Math.random() * 60) - 10); // Between 10 and 70 days ago
       
       const u = await User.create({ name: s.name, phoneOrEmail: s.phone, role: "STUDENT", institute_id: iid });
-      const doc = await Student.create({ user_id: u._id, batch_id: s.batch, parent_name: s.parent, parent_phone: s.parentPhone, admission_date: admissionDate, institute_id: iid });
+      const doc = await Student.create({ user_id: u._id, section_id: s.section, parent_name: s.parent, parent_phone: s.parentPhone, admission_date: admissionDate, institute_id: iid });
       students.push(doc);
     }
 
@@ -139,7 +143,7 @@ export async function POST(req) {
 
             await Attendance.create({
                 student_id: student._id,
-                batch_id: student.batch_id,
+                section_id: student.section_id,
                 date,
                 status: isAbsent ? "ABSENT" : "PRESENT",
                 institute_id: iid,
@@ -151,7 +155,7 @@ export async function POST(req) {
     // 7. Tests & Results
     const testJEE = await Test.create({ 
       name: "JEE Mock Test 1", 
-      batch_id: batchJEE._id, 
+      section_id: sectionJEE._id, 
       date: new Date(), 
       subjects: [
         { name: "Physics", max_marks: 100 },
@@ -163,7 +167,7 @@ export async function POST(req) {
 
     const testNEET = await Test.create({ 
       name: "NEET Mock Test 1", 
-      batch_id: batchNEET._id, 
+      section_id: sectionNEET._id, 
       date: new Date(), 
       subjects: [
         { name: "Physics", max_marks: 180 },
@@ -175,7 +179,7 @@ export async function POST(req) {
 
     for (let i = 0; i < students.length; i++) {
       const student = students[i];
-      const isJEE = student.batch_id.toString() === batchJEE._id.toString();
+      const isJEE = student.section_id.toString() === sectionJEE._id.toString();
       
       const subject_marks = isJEE ? [
         { subject: "Physics", marks: Math.floor(Math.random() * 80 + 20) },

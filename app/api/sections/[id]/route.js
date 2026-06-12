@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 
 export async function PUT(req, { params }) {
   try {
@@ -9,18 +9,17 @@ export async function PUT(req, { params }) {
     const authUser = await requireRole(["ADMIN"]);
     const { id } = await params;
     const body = await req.json();
-    const { name, course_id, teacher_id, timing } = body;
+    const { name, class_id } = body;
 
-    const batch = await Batch.findOneAndUpdate(
+    const section = await Section.findOneAndUpdate(
       { _id: id, institute_id: authUser.institute_id },
-      { name, course_id, teacher_id, timing },
+      { name, class_id },
       { new: true }
     )
-      .populate("course_id", "name")
-      .populate({ path: "teacher_id", populate: { path: "user_id", select: "name phoneOrEmail" } });
+      .populate("class_id", "name");
 
-    if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 404 });
-    return NextResponse.json(batch);
+    if (!section) return NextResponse.json({ error: "Section not found" }, { status: 404 });
+    return NextResponse.json(section);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -34,24 +33,24 @@ export async function DELETE(req, { params }) {
     
     // Check for relational integrity
     const { default: Student } = await import("@/models/Student");
-    const studentCount = await Student.countDocuments({ batch_id: id, institute_id: authUser.institute_id });
+    const studentCount = await Student.countDocuments({ section_id: id, institute_id: authUser.institute_id });
     if (studentCount > 0) {
-      return NextResponse.json({ error: "Cannot delete batch with active students" }, { status: 400 });
+      return NextResponse.json({ error: "Cannot delete section with active students" }, { status: 400 });
     }
 
-    const batch = await Batch.findOneAndDelete({ _id: id, institute_id: authUser.institute_id });
-    if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 404 });
+    const section = await Section.findOneAndDelete({ _id: id, institute_id: authUser.institute_id });
+    if (!section) return NextResponse.json({ error: "Section not found" }, { status: 404 });
     
     // Cleanup related data like Attendance and Tests (Results cascade deleted if we delete Tests)
     const { default: Attendance } = await import("@/models/Attendance");
     const { default: Test } = await import("@/models/Test");
     const { default: Result } = await import("@/models/Result");
 
-    await Attendance.deleteMany({ batch_id: id });
-    const tests = await Test.find({ batch_id: id }, { _id: 1 });
+    await Attendance.deleteMany({ section_id: id });
+    const tests = await Test.find({ section_id: id }, { _id: 1 });
     const testIds = tests.map(t => t._id);
     await Result.deleteMany({ test_id: { $in: testIds } });
-    await Test.deleteMany({ batch_id: id });
+    await Test.deleteMany({ section_id: id });
 
     return NextResponse.json({ success: true });
   } catch (error) {

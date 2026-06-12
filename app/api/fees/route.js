@@ -4,7 +4,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import Fee from "@/models/Fee";
 import Student from "@/models/Student";
 import Institute from "@/models/Institute";
-import { sendEventToN8N } from "@/services/n8n";
+import Notification from "@/models/Notification";
 
 export const dynamic = "force-dynamic";
 
@@ -122,34 +122,32 @@ export async function POST(req) {
       institute_id: authUser.institute_id,
     });
 
-    // Fire webhook without blocking the response
-    setImmediate(async () => {
-      try {
-        const student = await Student.findById(student_id)
-          .select("parent_phone parent_name batch_id user_id")
-          .populate("batch_id", "name")
-          .populate("user_id", "name")
-          .lean();
-        const inst = await Institute.findById(authUser.institute_id, { name: 1 }).lean();
+    // Notify parent via in-app Notification (same as test notify)
+    try {
+      const student = await Student.findById(student_id)
+        .select("parent_phone parent_name user_id")
+        .populate("user_id", "name")
+        .lean();
 
-        if (student && inst) {
-          await sendEventToN8N({
-            event_type: "fee_reminder",
-            timestamp: new Date().toISOString(),
-            institute: { id: inst._id.toString(), name: inst.name },
-            student: {
-              id: student._id.toString(),
-              name: student.user_id?.name || student.parent_name || "Student",
-              parent_phone: student.parent_phone,
-              batch_name: student.batch_id?.name || "Unknown",
-            },
-            data: { due_amount: fee.due_amount, due_date: fee.due_date, days_overdue: 0 },
-          });
-        }
-      } catch (e) {
-        console.error("Fee webhook error:", e.message);
+      if (student) {
+        const studentName = student.user_id?.name || student.parent_name || "Student";
+        const parentPhone = student.parent_phone || "—";
+        const dueDateStr = new Date(fee.due_date).toLocaleDateString("en-GB");
+        const message = `Fee reminder: ₹${fee.due_amount} is due on ${dueDateStr}. Please make the payment on time.`;
+
+        await Notification.create({
+          institute_id: authUser.institute_id,
+          student_id: student._id,
+          type: "FEE_REMINDER",
+          recipient_name: studentName,
+          recipient_phone: parentPhone,
+          message,
+          status: "SENT",
+        });
       }
-    });
+    } catch (e) {
+      console.error("Fee notification error:", e.message);
+    }
 
     return NextResponse.json(fee, { status: 201 });
   } catch (error) {

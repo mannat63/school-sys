@@ -14,7 +14,7 @@ async function consolidate() {
   const User = mongoose.connection.collection("users");
   const Institute = mongoose.connection.collection("institutes");
   const Teacher = mongoose.connection.collection("teachers");
-  const Batch = mongoose.connection.collection("batches");
+  const Section = mongoose.connection.collection("sections");
   const Student = mongoose.connection.collection("students");
   const Fee = mongoose.connection.collection("fees");
   const Attendance = mongoose.connection.collection("attendances");
@@ -26,7 +26,7 @@ async function consolidate() {
   const primaryInst = institutes[0]._id;
   console.log("Primary Institute ID:", primaryInst);
 
-  for (const col of [User, Teacher, Batch, Student, Fee, Attendance, Test, Result]) {
+  for (const col of [User, Teacher, Section, Student, Fee, Attendance, Test, Result]) {
     await col.updateMany({}, { $set: { institute_id: primaryInst } });
   }
 

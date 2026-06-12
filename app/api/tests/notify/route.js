@@ -21,7 +21,7 @@ export async function POST(req) {
     }
 
     // Fetch the test
-    const test = await Test.findById(test_id).populate("batch_id", "name");
+    const test = await Test.findById(test_id).populate("section_id", "name");
     if (!test) {
       return NextResponse.json({ error: "Test not found" }, { status: 404 });
     }

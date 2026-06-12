@@ -13,7 +13,7 @@ async function repair() {
 
   const User = mongoose.connection.collection("users");
   const Teacher = mongoose.connection.collection("teachers");
-  const Batch = mongoose.connection.collection("batches");
+  const Section = mongoose.connection.collection("sections");
   const Student = mongoose.connection.collection("students");
   const Fee = mongoose.connection.collection("fees");
   const Attendance = mongoose.connection.collection("attendances");
@@ -26,7 +26,7 @@ async function repair() {
   if (institutes.length > 0) {
     const primaryInst = institutes[0]._id;
     console.log("Forcing single Institute ID:", primaryInst);
-    for (const col of [User, Teacher, Batch, Student, Fee, Attendance, Test, Result]) {
+    for (const col of [User, Teacher, Section, Student, Fee, Attendance, Test, Result]) {
       await col.updateMany({}, { $set: { institute_id: primaryInst } });
     }
   }
@@ -91,11 +91,11 @@ async function repair() {
   const mannatUser = mannatTeacher ? await User.findOne({ _id: mannatTeacher.user_id }) : null;
   console.log("Teacher Document mapped to User:", mannatUser?.phoneOrEmail, "| Clerk ID:", mannatUser?.clerk_id);
   
-  const mBatches = await Batch.find({ teacher_id: mannatTeacher?._id }).toArray();
-  console.log(`Batches assigned to this Teacher: ${mBatches.length}`);
-  if (mBatches.length > 0) {
-    const mStudents = await Student.find({ batch_id: mBatches[0]._id }).toArray();
-    console.log(`Students assigned to Batch ${mBatches[0].name}: ${mStudents.length}`);
+  const mSections = await Section.find({ teacher_id: mannatTeacher?._id }).toArray();
+  console.log(`Sections assigned to this Teacher: ${mSections.length}`);
+  if (mSections.length > 0) {
+    const mStudents = await Student.find({ section_id: mSections[0]._id }).toArray();
+    console.log(`Students assigned to Section ${mSections[0].name}: ${mStudents.length}`);
   }
 
   console.log("\nRepair completed.");

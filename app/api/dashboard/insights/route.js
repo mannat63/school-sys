@@ -6,7 +6,7 @@ import Fee from "@/models/Fee";
 import Attendance from "@/models/Attendance";
 import Test from "@/models/Test";
 import Result from "@/models/Result";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 
 export async function GET(req) {
   try {
@@ -85,26 +85,26 @@ export async function GET(req) {
     const attendanceAlert = below50Count > 0 ? { count: below50Count } : null;
 
     // 3. Test Performance Alerts
-    // Compare last 2 tests per batch
+    // Compare last 2 tests per section
     const allTests = await Test.find({ institute_id: instituteId }).sort({ date: -1 }).lean();
-    const testsByBatch = {};
+    const testsBySection = {};
     allTests.forEach(t => {
-      const bId = t.batch_id?.toString();
+      const bId = t.section_id?.toString();
       if (!bId) return;
-      if (!testsByBatch[bId]) testsByBatch[bId] = [];
-      testsByBatch[bId].push(t);
+      if (!testsBySection[bId]) testsBySection[bId] = [];
+      testsBySection[bId].push(t);
     });
 
     const testDrops = [];
-    const batches = await Batch.find({ institute_id: instituteId }).lean();
-    const batchNameMap = {};
-    batches.forEach(b => { batchNameMap[b._id.toString()] = b.name; });
+    const sections = await Section.find({ institute_id: instituteId }).lean();
+    const sectionNameMap = {};
+    sections.forEach(b => { sectionNameMap[b._id.toString()] = b.name; });
 
-    for (const bId in testsByBatch) {
-      const batchTests = testsByBatch[bId];
-      if (batchTests.length >= 2) {
-        const latestTest = batchTests[0];
-        const previousTest = batchTests[1];
+    for (const bId in testsBySection) {
+      const sectionTests = testsBySection[bId];
+      if (sectionTests.length >= 2) {
+        const latestTest = sectionTests[0];
+        const previousTest = sectionTests[1];
 
         const [latestResults, prevResults] = await Promise.all([
           Result.find({ test_id: latestTest._id }).lean(),
@@ -124,7 +124,7 @@ export async function GET(req) {
           const drop = ((prevAvg - latestAvg) / prevAvg) * 100;
           if (drop > 15) { // Drop > 15%
             testDrops.push({
-              batch_name: batchNameMap[bId] || "Unknown",
+              section_name: sectionNameMap[bId] || "Unknown",
               drop_percentage: drop.toFixed(1)
             });
           }
@@ -134,12 +134,12 @@ export async function GET(req) {
 
     const testAlert = testDrops.length > 0 ? testDrops : null;
 
-    // 4. Top Performer of Each Batch
+    // 4. Top Performer of Each Section
     const topPerformers = [];
-    for (const bId in testsByBatch) {
-      if (testsByBatch[bId].length > 0) {
-        const batchResults = await Result.aggregate([
-          { $match: { student_id: { $in: await Student.find({ batch_id: bId }).distinct("_id") } } },
+    for (const bId in testsBySection) {
+      if (testsBySection[bId].length > 0) {
+        const sectionResults = await Result.aggregate([
+          { $match: { student_id: { $in: await Student.find({ section_id: bId }).distinct("_id") } } },
           { $lookup: { from: "tests", localField: "test_id", foreignField: "_id", as: "testInfo" } },
           { $unwind: "$testInfo" },
           { $project: { student_id: 1, percentage: { $multiply: [{ $divide: ["$marks", "$testInfo.total_marks"] }, 100] } } },
@@ -148,12 +148,12 @@ export async function GET(req) {
           { $limit: 1 }
         ]);
 
-        if (batchResults.length > 0) {
-          const topOne = await Student.findById(batchResults[0]._id).populate("user_id", "name").lean();
+        if (sectionResults.length > 0) {
+          const topOne = await Student.findById(sectionResults[0]._id).populate("user_id", "name").lean();
           topPerformers.push({
-            batch_name: batchNameMap[bId],
+            section_name: sectionNameMap[bId],
             student_name: topOne?.user_id?.name || "Unknown",
-            score: batchResults[0].avg.toFixed(1)
+            score: sectionResults[0].avg.toFixed(1)
           });
         }
       }

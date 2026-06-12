@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth";
 import Attendance from "@/models/Attendance";
 import Student from "@/models/Student";
 import User from "@/models/User";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Institute from "@/models/Institute";
 import Notification from "@/models/Notification";
 import { sendEventToN8N } from "@/services/n8n";
@@ -15,28 +15,38 @@ export async function POST(req) {
     const authUser = await requireRole(["ADMIN", "TEACHER"]);
 
     const body = await req.json();
-    const { batch_id, date } = body;
+    const { section_id, subject_id, date } = body;
 
-    if (!batch_id || !date) {
-      return NextResponse.json({ error: "batch_id and date are required" }, { status: 400 });
+    if (!section_id || !date) {
+      return NextResponse.json({ error: "section_id and date are required" }, { status: 400 });
     }
 
-    // Get batch name
-    const batch = await Batch.findById(batch_id);
-    if (!batch) {
-      return NextResponse.json({ error: "Batch not found" }, { status: 404 });
+    // Get section name
+    const section = await Section.findById(section_id);
+    if (!section) {
+      return NextResponse.json({ error: "Section not found" }, { status: 404 });
     }
     const inst = await Institute.findById(authUser.institute_id);
 
-    // Fetch attendance records for this batch and date
+    let subjectName = "";
+    if (subject_id) {
+       const { default: Subject } = await import("@/models/Subject");
+       const sub = await Subject.findById(subject_id);
+       if (sub) subjectName = ` for ${sub.name}`;
+    }
+
+    // Fetch attendance records for this section and date
     const dateStart = new Date(date);
     const dateEnd = new Date(date);
     dateEnd.setDate(dateEnd.getDate() + 1);
 
-    const records = await Attendance.find({
-      batch_id,
+    const query = {
+      section_id,
       date: { $gte: dateStart, $lt: dateEnd }
-    }).populate({
+    };
+    if (subject_id !== undefined) query.subject_id = subject_id;
+
+    const records = await Attendance.find(query).populate({
       path: "student_id",
       populate: { path: "user_id", select: "name" }
     });
@@ -72,7 +82,7 @@ export async function POST(req) {
               id: student._id.toString(),
               name: studentName,
               parent_phone: parentPhone,
-              batch_name: batch.name
+              section_name: section.name
             },
             data: {
               date: date,
@@ -86,8 +96,9 @@ export async function POST(req) {
             type: "ATTENDANCE_ALERT",
             recipient_name: studentName,
             recipient_phone: parentPhone,
-            message: `Dear Parent, your child ${studentName} was marked ABSENT for ${batch.name} on ${new Date(date).toLocaleDateString("en-GB")}. From ${inst.name}.`,
-            status: "SENT"
+            message: `Dear Parent, your child ${studentName} was marked ABSENT${subjectName} in Sec ${section.name} on ${new Date(date).toLocaleDateString("en-GB")}. From ${inst.name}.`,
+            status: "SENT",
+            is_read: false
           });
 
           sentCount++;
@@ -108,7 +119,7 @@ export async function POST(req) {
       absent: absentCount,
       skipped: errors.length,
       errors,
-      message: `Sent ${sentCount} attendance notification${sentCount !== 1 ? "s" : ""} for ${batch.name} (${dateFormatted}). Present: ${presentCount}, Absent: ${absentCount}.`
+      message: `Sent ${sentCount} attendance notification${sentCount !== 1 ? "s" : ""} for ${section.name} (${dateFormatted}). Present: ${presentCount}, Absent: ${absentCount}.`
     });
 
   } catch (error) {

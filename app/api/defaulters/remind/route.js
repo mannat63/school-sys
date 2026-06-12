@@ -3,12 +3,8 @@ import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import Fee from "@/models/Fee";
 import Student from "@/models/Student";
-import User from "@/models/User";
-
 import Institute from "@/models/Institute";
-import Batch from "@/models/Batch";
 import Notification from "@/models/Notification";
-import { sendEventToN8N } from "@/services/n8n";
 
 export async function POST(req) {
   try {
@@ -37,28 +33,6 @@ export async function POST(req) {
       }
       
       try {
-        const student = await Student.findById(fee.student_id).populate("batch_id", "name").lean();
-        
-        await sendEventToN8N({
-          event_type: "fee_reminder",
-          timestamp: new Date().toISOString(),
-          institute: {
-            id: inst._id.toString(),
-            name: inst.name
-          },
-          student: {
-            id: fee.student_id,
-            name: fee.name,
-            parent_phone: fee.parent_phone,
-            batch_name: student?.batch_id?.name || "Unknown"
-          },
-          data: {
-            due_amount: fee.due_amount,
-            due_date: new Date(new Date().setDate(new Date().getDate() - fee.days_overdue)).toLocaleDateString("en-CA"), // fallback approximate date
-            days_overdue: fee.days_overdue,
-            payment_link: razorpay_link
-          }
-        });
         
         await Notification.create({
           institute_id: inst._id,

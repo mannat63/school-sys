@@ -12,12 +12,12 @@ const defaultSubjects = [
 
 export default function TestsPage() {
   const [tests, setTests] = useState([]);
-  const [batches, setBatches] = useState([]);
+  const [sections, setSections] = useState([]);
   const [results, setResults] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", batch_id: "", date: "", subjects: defaultSubjects });
+  const [form, setForm] = useState({ name: "", class_id: "", section_ids: [], date: "", subjects: defaultSubjects });
   const [editingId, setEditingId] = useState(null);
   const [selectedTest, setSelectedTest] = useState(null);
   const [markForm, setMarkForm] = useState({});
@@ -26,6 +26,11 @@ export default function TestsPage() {
   const [notifyingTestId, setNotifyingTestId] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
 
+  // Filters
+  const [classes, setClasses] = useState([]);
+  const [filterClass, setFilterClass] = useState("");
+  const [filterSection, setFilterSection] = useState("");
+
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -33,13 +38,15 @@ export default function TestsPage() {
   async function loadInitialData() {
     setLoading(true);
     try {
-      const [t, b, m] = await Promise.all([
+      const [t, b, m, c] = await Promise.all([
         fetch("/api/tests").then((r) => r.json()),
-        fetch("/api/batches").then((r) => r.json()),
+        fetch("/api/sections").then((r) => r.json()),
         fetch("/api/me").then((r) => r.json()),
+        fetch("/api/classes").then((r) => r.json())
       ]);
       setTests(Array.isArray(t) ? t : []);
-      setBatches(Array.isArray(b) ? b : []);
+      setSections(Array.isArray(b) ? b : []);
+      setClasses(Array.isArray(c) ? c : []);
       setRole(m?.role || "STUDENT");
     } catch (err) {
       toast.error("Failed to load data");
@@ -48,41 +55,64 @@ export default function TestsPage() {
     }
   }
 
+  const filteredTests = tests.filter(t => {
+     if (filterClass) {
+        const sec = sections.find(s => s._id === (t.section_id?._id || t.section_id));
+        if (!sec || (sec.class_id?._id || sec.class_id) !== filterClass) return false;
+     }
+     if (filterSection && filterSection !== (t.section_id?._id || t.section_id)) return false;
+     return true;
+  });
+
   async function handleCreateOrUpdateTest(e) {
     e.preventDefault();
     if (!form.subjects || form.subjects.length === 0) {
       return toast.error("Please add at least one subject.");
     }
+    if (!form.section_ids || form.section_ids.length === 0) {
+      return toast.error("Please select at least one section.");
+    }
 
-    const url = editingId ? `/api/tests/${editingId}` : "/api/tests";
-    const method = editingId ? "PUT" : "POST";
+    try {
+      if (editingId) {
+        const res = await fetch(`/api/tests/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, section_id: form.section_ids[0] }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+      } else {
+        const promises = form.section_ids.map((s) =>
+          fetch("/api/tests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...form, section_id: s }),
+          }).then(async r => { if (!r.ok) throw new Error((await r.json()).error); })
+        );
+        await Promise.all(promises);
+      }
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-
-    if (res.ok) {
-      toast.success(editingId ? "Test updated successfully" : "Test created successfully");
+      toast.success(editingId ? "Test updated successfully" : "Tests created successfully");
       setShowForm(false);
       setEditingId(null);
-      setForm({ name: "", batch_id: "", date: "", subjects: defaultSubjects });
+      setForm({ name: "", class_id: "", section_ids: [], date: "", subjects: defaultSubjects });
       const updated = await fetch("/api/tests").then((r) => r.json());
       setTests(Array.isArray(updated) ? updated : []);
-    } else {
-      const err = await res.json();
-      toast.error(err.error || "Failed to save test");
+    } catch (err) {
+      toast.error(err.message || "Failed to save test");
     }
   }
 
   function handleEditClick(test) {
     setEditingId(test._id);
+    const secId = test.section_id?._id || test.section_id;
+    const secObj = sections.find(s => s._id === secId);
     setForm({
       name: test.name,
-      batch_id: test.batch_id?._id || test.batch_id,
+      class_id: secObj ? (secObj.class_id?._id || secObj.class_id) : "",
+      section_ids: secId ? [secId] : [],
       date: new Date(test.date).toISOString().split("T")[0],
-      subjects: test.subjects || defaultSubjects
+      subjects: test.subjects && test.subjects.length > 0 ? test.subjects : defaultSubjects
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -107,7 +137,7 @@ export default function TestsPage() {
     setModalLoading(true);
     const [r, s] = await Promise.all([
       fetch(`/api/results?test_id=${test._id}`).then((r) => r.json()),
-      fetch(`/api/students?batch_id=${test.batch_id?._id || test.batch_id}`).then((r) => r.json()),
+      fetch(`/api/students?section_id=${test.section_id?._id || test.section_id}`).then((r) => r.json()),
     ]);
     setResults(Array.isArray(r) ? r : []);
     setStudents(Array.isArray(s) ? s : []);
@@ -138,6 +168,17 @@ export default function TestsPage() {
   async function saveMarks() {
     setSaving(true);
     try {
+      // Validate marks don't exceed max before saving
+      for (const [studentId, subjectScores] of Object.entries(markForm)) {
+        for (const sub of (selectedTest.subjects || [])) {
+          const val = Number(subjectScores?.[sub.name]);
+          if (!isNaN(val) && val > sub.max_marks) {
+            toast.error(`${sub.name}: ${val} exceeds max marks (${sub.max_marks})`);
+            setSaving(false);
+            return;
+          }
+        }
+      }
       const saves = Object.entries(markForm)
         .filter(([, subjectScores]) => Object.keys(subjectScores || {}).length > 0)
         .map(([studentId, subjectScores]) => {
@@ -215,7 +256,7 @@ export default function TestsPage() {
               if (showForm) {
                 setShowForm(false);
                 setEditingId(null);
-                setForm({ name: "", batch_id: "", date: "", subjects: defaultSubjects });
+                setForm({ name: "", class_id: "", section_ids: [], date: "", subjects: defaultSubjects });
               } else {
                 setShowForm(true);
               }
@@ -261,16 +302,37 @@ export default function TestsPage() {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Batch
+              Class
             </label>
             <select
-              required
-              value={form.batch_id}
-              onChange={(e) => setForm({ ...form, batch_id: e.target.value })}
+              value={form.class_id || ""}
+              onChange={(e) => setForm({ ...form, class_id: e.target.value, section_ids: [] })}
               className="input-field"
             >
-              <option value="">Select Batch</option>
-              {batches.map((b) => (
+              <option value="">Select Class</option>
+              {classes.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              Sections <span className="text-gray-400 font-normal lowercase">(Hold Ctrl/Cmd to select multiple)</span>
+            </label>
+            <select
+              multiple
+              required
+              value={form.section_ids}
+              onChange={(e) => {
+                const opts = Array.from(e.target.selectedOptions, option => option.value);
+                setForm({ ...form, section_ids: opts });
+              }}
+              className="input-field min-h-[80px]"
+              disabled={!form.class_id}
+            >
+              {sections.filter(s => (s.class_id?._id || s.class_id) === form.class_id).map((b) => (
                 <option key={b._id} value={b._id}>
                   {b.name}
                 </option>
@@ -365,9 +427,29 @@ export default function TestsPage() {
 
       {/* Tests Grid */}
       <div>
-        <h2 className="section-heading mb-4">Recent Tests</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-end mb-4 gap-4 border-b border-gray-200 pb-4">
+          <h2 className="section-heading !mb-0">Recent Tests</h2>
+          {role === "ADMIN" && (
+            <div className="flex gap-3">
+               <div className="min-w-[130px]">
+                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Filter by Class</label>
+                 <select value={filterClass} onChange={e => {setFilterClass(e.target.value); setFilterSection("")}} className="input-field text-xs py-1.5 h-auto">
+                    <option value="">All Classes</option>
+                    {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                 </select>
+               </div>
+               <div className="min-w-[130px]">
+                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Filter by Section</label>
+                 <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="input-field text-xs py-1.5 h-auto" disabled={!filterClass}>
+                    <option value="">All Sections</option>
+                    {sections.filter(s => !filterClass || (s.class_id?._id || s.class_id) === filterClass).map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                 </select>
+               </div>
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-          {tests.map((t) => {
+          {filteredTests.map((t) => {
             const totalMaxMarks = t.subjects?.reduce((sum, s) => sum + (s.max_marks || 0), 0) || 0;
             return (
               <div
@@ -382,7 +464,7 @@ export default function TestsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-gray-800 text-base leading-tight truncate">{t.name}</div>
                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      {t.batch_id?.name || "—"}
+                      {t.section_id?.class_id?.name ? `${t.section_id.class_id.name} · ${t.section_id.name}` : (t.section_id?.name || "—")}
                     </div>
                   </div>
                 </div>
@@ -410,12 +492,12 @@ export default function TestsPage() {
                 <div className="flex flex-col gap-2 pt-3 border-t border-gray-100 border-dashed">
                   <div className="flex items-center justify-between text-sm font-medium">
                     <span className="flex items-center text-gray-500 text-xs">
-                      <Calendar size={13} className="mr-1.5" />
-                      {new Date(t.date).toLocaleDateString()}
+                       <Calendar size={13} className="mr-1.5" />
+                       {new Date(t.date).toLocaleDateString()}
                     </span>
                     <span className="flex items-center text-gray-500 text-xs font-bold">
-                      <ClipboardList size={13} className="mr-1.5" />
-                      {totalMaxMarks} Marks
+                       <ClipboardList size={13} className="mr-1.5" />
+                       {totalMaxMarks} Marks
                     </span>
                   </div>
                   <div className="text-[10px] items-center flex gap-1.5 text-gray-400 font-bold uppercase tracking-wider truncate">
@@ -443,11 +525,11 @@ export default function TestsPage() {
               </div>
             );
           })}
-          {tests.length === 0 && (
+          {filteredTests.length === 0 && (
             <div className="col-span-full py-16 text-center border-2 border-dashed border-gray-200 rounded-lg">
               <FileText size={32} className="mx-auto text-gray-300 mb-3" />
-              <h3 className="text-base font-bold text-gray-700">No tests created yet</h3>
-              <p className="text-sm text-gray-500 mt-1">Create your first test to enter student marks.</p>
+              <h3 className="text-base font-bold text-gray-700">No tests found</h3>
+              <p className="text-sm text-gray-500 mt-1">Create your first test or adjust the filters above.</p>
             </div>
           )}
         </div>
@@ -472,7 +554,7 @@ export default function TestsPage() {
                   {selectedTest.name}
                 </h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Batch: {selectedTest.batch_id?.name || "—"} &nbsp;·&nbsp; Total Max: {selectedTest.subjects?.reduce((sum, s) => sum + (s.max_marks || 0), 0) || 0} marks
+                  {selectedTest.section_id?.class_id?.name ? `${selectedTest.section_id.class_id.name} · ${selectedTest.section_id.name}` : (selectedTest.section_id?.name || "—")} &nbsp;·&nbsp; Total Max: {selectedTest.subjects?.reduce((sum, s) => sum + (s.max_marks || 0), 0) || 0} marks
                 </p>
               </div>
               <button
@@ -575,11 +657,10 @@ export default function TestsPage() {
                             {s.user_id?.name || s.parent_name}
                           </td>
                           {selectedTest.subjects?.map((sub, idx) => (
-                            <td key={idx} className="text-center bg-white">
+                             <td key={idx} className="text-center bg-white">
                               <div className="flex items-center justify-center">
                                 <input
                                   type="number"
-                                  max={sub.max_marks}
                                   min={0}
                                   value={markForm[s._id]?.[sub.name] ?? ""}
                                   onChange={(e) =>
@@ -588,7 +669,7 @@ export default function TestsPage() {
                                       [s._id]: { ...(markForm[s._id] || {}), [sub.name]: e.target.value } 
                                     })
                                   }
-                                  className="w-16 px-2 py-1 text-center border border-gray-300 rounded-md text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 transition-all font-mono shadow-sm"
+                                  className="w-16 px-2 py-1 text-center border border-gray-300 rounded-md text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 transition-all font-mono shadow-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                   placeholder="—"
                                 />
                               </div>
@@ -604,7 +685,7 @@ export default function TestsPage() {
                     {students.length === 0 && (
                       <tr>
                         <td colSpan={(selectedTest.subjects?.length || 0) + 2} className="py-10 text-center text-gray-500 font-medium bg-gray-50/50">
-                          No students enrolled in this batch.
+                          No students enrolled in this section.
                         </td>
                       </tr>
                     )}

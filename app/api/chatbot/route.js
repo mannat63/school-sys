@@ -7,7 +7,7 @@ import Result from "@/models/Result";
 import Payment from "@/models/Payment";
 import Fee from "@/models/Fee";
 import Attendance from "@/models/Attendance";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Student from "@/models/Student";
 import User from "@/models/User";
 
@@ -28,7 +28,7 @@ export async function GET(req) {
 
     switch (q) {
       case "performance": {
-        // Find batch with highest avg marks
+        // Find section with highest avg marks
         const results = await Result.aggregate([
           { $match: { institute_id: instId } },
           {
@@ -42,7 +42,7 @@ export async function GET(req) {
           { $unwind: "$student" },
           {
             $group: {
-              _id: "$student.batch_id",
+              _id: "$student.section_id",
               avgScore: { $avg: "$marks_obtained" }
             }
           },
@@ -50,26 +50,26 @@ export async function GET(req) {
           { $limit: 1 },
           {
             $lookup: {
-              from: "batches",
+              from: "sections",
               localField: "_id",
               foreignField: "_id",
-              as: "batch"
+              as: "section"
             }
           },
-          { $unwind: "$batch" }
+          { $unwind: "$section" }
         ]);
 
         if (results.length > 0) {
           const avgScore = results[0].avgScore || 0;
           return NextResponse.json({
-            answer: `The best performing batch is **${results[0].batch.name}** with an average score of ${avgScore.toFixed(1)} marks.`
+            answer: `The best performing section is **${results[0].section.name}** with an average score of ${avgScore.toFixed(1)} marks.`
           });
         }
         return NextResponse.json({ answer: "I don't have enough test result data to evaluate performance right now." });
       }
 
       case "revenue": {
-        // Find batch generating the highest confirmed revenue
+        // Find section generating the highest confirmed revenue
         const revenues = await Payment.aggregate([
           { $match: { institute_id: instId, status: "CONFIRMED" } },
           {
@@ -83,7 +83,7 @@ export async function GET(req) {
           { $unwind: "$student" },
           {
             $group: {
-              _id: "$student.batch_id",
+              _id: "$student.section_id",
               totalCollected: { $sum: "$amount" }
             }
           },
@@ -91,21 +91,21 @@ export async function GET(req) {
           { $limit: 1 },
           {
             $lookup: {
-              from: "batches",
+              from: "sections",
               localField: "_id",
               foreignField: "_id",
-              as: "batch"
+              as: "section"
             }
           },
-          { $unwind: "$batch" }
+          { $unwind: "$section" }
         ]);
 
         if (revenues.length > 0) {
           return NextResponse.json({
-            answer: `The highest paying batch is **${revenues[0].batch.name}**, which has generated **₹${revenues[0].totalCollected.toLocaleString()}** in confirmed revenue.`
+            answer: `The highest paying section is **${revenues[0].section.name}**, which has generated **₹${revenues[0].totalCollected.toLocaleString()}** in confirmed revenue.`
           });
         }
-        return NextResponse.json({ answer: "No confirmed payments found to calculate batch revenue." });
+        return NextResponse.json({ answer: "No confirmed payments found to calculate section revenue." });
       }
 
       case "defaulters": {
@@ -144,12 +144,12 @@ export async function GET(req) {
       }
 
       case "attendance": {
-        // Batch with most absentees overall
+        // Section with most absentees overall
         const absentees = await Attendance.aggregate([
           { $match: { institute_id: instId, status: "ABSENT" } },
           {
             $group: {
-              _id: "$batch_id",
+              _id: "$section_id",
               absentCount: { $sum: 1 }
             }
           },
@@ -157,18 +157,18 @@ export async function GET(req) {
           { $limit: 1 },
           {
             $lookup: {
-              from: "batches",
+              from: "sections",
               localField: "_id",
               foreignField: "_id",
-              as: "batch"
+              as: "section"
             }
           },
-          { $unwind: "$batch" }
+          { $unwind: "$section" }
         ]);
 
         if (absentees.length > 0) {
           return NextResponse.json({
-            answer: `**${absentees[0].batch.name}** currently has the most absentee records (Total: ${absentees[0].absentCount} missed sessions).`
+            answer: `**${absentees[0].section.name}** currently has the most absentee records (Total: ${absentees[0].absentCount} missed sessions).`
           });
         }
         return NextResponse.json({ answer: "All students seem to be perfectly present. No absent records found!" });

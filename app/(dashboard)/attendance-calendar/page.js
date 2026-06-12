@@ -24,8 +24,10 @@ function Modal({ open, onClose, title, children }) {
 
 export default function AttendanceCalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [batches, setBatches] = useState([]);
-  const [selectedBatch, setSelectedBatch] = useState("");
+  const [classes, setClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState("");
+  const [sections, setSections] = useState([]);
+  const [selectedSection, setSelectedSection] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [panelDate, setPanelDate] = useState(null);
@@ -35,22 +37,40 @@ export default function AttendanceCalendarPage() {
   const [notifying, setNotifying] = useState(false);
 
   useEffect(() => {
-    fetch("/api/batches", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((b) => {
-        if (b.error) {
-          console.error("Failed to fetch batches:", b.error);
-          return;
-        }
-        const bList = Array.isArray(b) ? b : [];
-        setBatches(bList);
-        if (bList.length > 0) {
-          setSelectedBatch(bList[0]._id);
+    Promise.all([
+      fetch("/api/classes", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/sections", { cache: "no-store" }).then(r => r.json()),
+    ])
+      .then(([cRes, sRes]) => {
+        const sList = Array.isArray(sRes) ? sRes : [];
+        // Only show classes that have at least one section mapped for this user
+        const validClassIds = new Set(sList.map(s => s.class_id?._id || s.class_id).filter(Boolean));
+        const cList = (Array.isArray(cRes) ? cRes : []).filter(c => validClassIds.has(c._id));
+        setClasses(cList);
+        setSections(sList);
+        if (cList.length > 0) {
+          const defaultClass = cList[0];
+          setSelectedClass(defaultClass._id);
+          const defaultSections = sList.filter(s => (s.class_id?._id || s.class_id) === defaultClass._id);
+          if (defaultSections.length > 0) {
+            setSelectedSection(defaultSections[0]._id);
+          }
         }
       })
-      .catch(err => console.error("Error fetching batches:", err))
+      .catch(err => console.error("Error fetching data:", err))
       .finally(() => setLoading(false));
   }, []);
+
+  const filteredSections = sections.filter(s => (s.class_id?._id || s.class_id) === selectedClass);
+
+  // If selected section is no longer valid, switch it
+  useEffect(() => {
+    if (filteredSections.length > 0 && !filteredSections.find(s => s._id === selectedSection)) {
+      setSelectedSection(filteredSections[0]._id);
+    } else if (filteredSections.length === 0 && selectedSection) {
+      setSelectedSection("");
+    }
+  }, [selectedClass, filteredSections, selectedSection]);
 
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
@@ -70,14 +90,14 @@ export default function AttendanceCalendarPage() {
   function nextMonth() { setCurrentDate(new Date(year, month + 1, 1)); }
 
   async function openPanel(dayDate) {
-    if (!selectedBatch) return toast("Please select a batch first.", "error");
+    if (!selectedSection) return toast("Please select a section first.", "error");
 
     const dateStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
     setPanelDate(dayDate);
     
     const [sRes, aRes] = await Promise.all([
-      fetch(`/api/students?batch_id=${selectedBatch}`).then(r => r.json()),
-      fetch(`/api/attendance?batch_id=${selectedBatch}&date=${dateStr}`).then(r => r.json()),
+      fetch(`/api/students?section_id=${selectedSection}`).then(r => r.json()),
+      fetch(`/api/attendance?section_id=${selectedSection}&date=${dateStr}`).then(r => r.json()),
     ]);
     
     const sList = Array.isArray(sRes) ? sRes : [];
@@ -103,7 +123,7 @@ export default function AttendanceCalendarPage() {
     const newStatus = attendance[studentId] === "PRESENT" ? "ABSENT" : "PRESENT";
     setAttendance((prev) => ({ ...prev, [studentId]: newStatus }));
     
-    if (!selectedBatch || !panelDate) return;
+    if (!selectedSection || !panelDate) return;
     const dateStr = `${panelDate.getFullYear()}-${String(panelDate.getMonth() + 1).padStart(2, '0')}-${String(panelDate.getDate()).padStart(2, '0')}`;
     
     try {
@@ -112,7 +132,7 @@ export default function AttendanceCalendarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: studentId,
-          batch_id: selectedBatch,
+          section_id: selectedSection,
           date: dateStr,
           status: newStatus,
         }),
@@ -124,7 +144,7 @@ export default function AttendanceCalendarPage() {
   }
 
   async function savePanel() {
-    if (!selectedBatch || !panelDate) return;
+    if (!selectedSection || !panelDate) return;
     setSaving(true);
     const dateStr = `${panelDate.getFullYear()}-${String(panelDate.getMonth() + 1).padStart(2, '0')}-${String(panelDate.getDate()).padStart(2, '0')}`;
 
@@ -134,7 +154,7 @@ export default function AttendanceCalendarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: student._id,
-          batch_id: selectedBatch,
+          section_id: selectedSection,
           date: dateStr,
           status: attendance[student._id] || "PRESENT",
         }),
@@ -147,14 +167,14 @@ export default function AttendanceCalendarPage() {
   }
 
   async function notifyParents() {
-    if (!selectedBatch || !panelDate) return;
+    if (!selectedSection || !panelDate) return;
     setNotifying(true);
     try {
       const dateStr = `${panelDate.getFullYear()}-${String(panelDate.getMonth() + 1).padStart(2, '0')}-${String(panelDate.getDate()).padStart(2, '0')}`;
       const res = await fetch("/api/attendance/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch_id: selectedBatch, date: dateStr })
+        body: JSON.stringify({ section_id: selectedSection, date: dateStr })
       });
       const data = await res.json();
       if (res.ok) {
@@ -191,12 +211,24 @@ export default function AttendanceCalendarPage() {
           <p className="page-subtitle mt-2">View and modify attendance for any past or present date.</p>
         </div>
         
-        <div className="w-full md:w-72">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Select Batch</label>
-          <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="input-field">
-            {batches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
-            {batches.length === 0 && <option value="">No batches available</option>}
-          </select>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="w-full sm:w-48">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Class</label>
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input-field">
+              {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+              {classes.length === 0 && <option value="">No classes available</option>}
+            </select>
+          </div>
+          <div className="w-full sm:w-48">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Section</label>
+            <select value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="input-field">
+              {filteredSections.map((b) => {
+                const className = b.class_id?.name || "";
+                return <option key={b._id} value={b._id}>{className ? `${className} - ${b.name}` : b.name}</option>;
+              })}
+              {filteredSections.length === 0 && <option value="">No sections mapped</option>}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -277,7 +309,7 @@ export default function AttendanceCalendarPage() {
                 <CalendarIcon size={32} />
               </div>
               <h3 className="text-base font-bold text-gray-700">No students found</h3>
-              <p className="text-sm text-gray-500 mt-1">No students enrolled in the selected batch.</p>
+              <p className="text-sm text-gray-500 mt-1">No students enrolled in the selected section.</p>
             </div>
           ) : (
             <table className="w-full text-sm">

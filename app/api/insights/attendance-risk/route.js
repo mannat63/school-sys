@@ -43,13 +43,13 @@ export async function GET(req) {
       { $unwind: "$studentInfo" },
       {
         $lookup: {
-          from: "batches",
-          localField: "studentInfo.batch_id",
+          from: "sections",
+          localField: "studentInfo.section_id",
           foreignField: "_id",
-          as: "batchInfo"
+          as: "sectionInfo"
         }
       },
-      { $unwind: "$batchInfo" },
+      { $unwind: "$sectionInfo" },
       {
         $lookup: {
           from: "users",
@@ -65,7 +65,7 @@ export async function GET(req) {
           studentId: "$student_id",
           name: { $ifNull: ["$userInfo.name", "$studentInfo.parent_name"] },
           percentage: { $round: ["$percentage", 1] },
-          batchName: "$batchInfo.name"
+          sectionName: "$sectionInfo.name"
         }
       }
     ]);

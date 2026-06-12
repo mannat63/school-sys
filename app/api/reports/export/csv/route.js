@@ -9,9 +9,9 @@ export async function GET(req) {
     const data = await adminRes.json();
     const students = data.students || [];
 
-    const header = "Student Name,Parent Phone,Batch,Attendance (%),Total Fees,Paid Fees,Due Fees,Tests Taken,Avg Score (%),Rank\n";
+    const header = "Student Name,Parent Phone,Section,Attendance (%),Total Fees,Paid Fees,Due Fees,Tests Taken,Avg Score (%),Rank\n";
     const rows = students.map(s => {
-        return `"${s.student.name}","${s.student.parent_phone}","${s.student.batch}","${s.attendance.percentage}","${s.fees.total}","${s.fees.paid}","${s.fees.due}","${s.tests.taken}","${s.tests.percentage}","${s.tests.rank}"`;
+        return `"${s.student.name}","${s.student.parent_phone}","${s.student.section}","${s.attendance.percentage}","${s.fees.total}","${s.fees.paid}","${s.fees.due}","${s.tests.taken}","${s.tests.percentage}","${s.tests.rank}"`;
     }).join("\n");
 
     const csvContent = header + rows;

@@ -3,7 +3,7 @@ import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import User from "@/models/User";
 import Course from "@/models/Course";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Student from "@/models/Student";
 import Teacher from "@/models/Teacher";
 import Fee from "@/models/Fee";
@@ -23,7 +23,7 @@ export async function POST(req) {
         Student.deleteMany({ institute_id: iid }),
         Teacher.deleteMany({ institute_id: iid }),
         Course.deleteMany({ institute_id: iid }),
-        Batch.deleteMany({ institute_id: iid }),
+        Section.deleteMany({ institute_id: iid }),
         Fee.deleteMany({ institute_id: iid }),
         Attendance.deleteMany({ institute_id: iid }),
         Test.deleteMany({ institute_id: iid }),

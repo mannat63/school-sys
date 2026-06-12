@@ -4,13 +4,14 @@ import mongoose from "mongoose";
 import User from "../models/User.js";
 import Institute from "../models/Institute.js";
 import Course from "../models/Course.js";
-import Batch from "../models/Batch.js";
+import Section from "../models/Section.js";
 import Student from "../models/Student.js";
 import Teacher from "../models/Teacher.js";
 import Fee from "../models/Fee.js";
 import Attendance from "../models/Attendance.js";
 import Test from "../models/Test.js";
 import Result from "../models/Result.js";
+import Subject from "../models/Subject.js";
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -28,13 +29,14 @@ async function seed() {
     User.deleteMany({}),
     Institute.deleteMany({}),
     Course.deleteMany({}),
-    Batch.deleteMany({}),
+    Section.deleteMany({}),
     Student.deleteMany({}),
     Teacher.deleteMany({}),
     Fee.deleteMany({}),
     Attendance.deleteMany({}),
     Test.deleteMany({}),
     Result.deleteMany({}),
+    Subject.deleteMany({}),
   ]);
   console.log("Cleared old data");
 
@@ -70,18 +72,23 @@ async function seed() {
     clerk_id: "CLERK_STUDENT_ID_PLACEHOLDER",
   });
 
-  // 3. Teacher profile
+  // 3. Subjects
+  const subjectPhy = await Subject.create({ name: "Physics", institute_id: institute._id });
+  const subjectMath = await Subject.create({ name: "Mathematics", institute_id: institute._id });
+
+  // 4. Teacher profile
   const teacher = await Teacher.create({
     user_id: teacherUser._id,
     institute_id: institute._id,
+    subjects: [subjectPhy._id, subjectMath._id]
   });
 
-  // 4. Courses
+  // 5. Courses
   const courseJEE = await Course.create({ name: "JEE Preparation", institute_id: institute._id });
   const course10 = await Course.create({ name: "10th Board", institute_id: institute._id });
 
-  // 5. Batches
-  const batchJEE = await Batch.create({
+  // 6. Sections
+  const sectionJEE = await Section.create({
     name: "JEE Morning",
     course_id: courseJEE._id,
     teacher_id: teacher._id,
@@ -89,7 +96,7 @@ async function seed() {
     institute_id: institute._id,
   });
 
-  const batch10 = await Batch.create({
+  const section10 = await Section.create({
     name: "10th Evening",
     course_id: course10._id,
     teacher_id: teacher._id,
@@ -97,13 +104,13 @@ async function seed() {
     institute_id: institute._id,
   });
 
-  // 6. Students (5 total)
+  // 7. Students (5 total)
   const studentNames = [
-    { name: "Aarav Patel", phone: "student@test.com", parent: "Suresh Patel", parentPhone: "+919111111111", batch: batchJEE._id, userId: studentUser._id },
-    { name: "Diya Singh", phone: "diya@test.com", parent: "Ramesh Singh", parentPhone: "+919222222222", batch: batchJEE._id, userId: null },
-    { name: "Vihaan Gupta", phone: "vihaan@test.com", parent: "Anil Gupta", parentPhone: "+919333333333", batch: batchJEE._id, userId: null },
-    { name: "Ananya Rao", phone: "ananya@test.com", parent: "Kiran Rao", parentPhone: "+919444444444", batch: batch10._id, userId: null },
-    { name: "Rohan Verma", phone: "rohan@test.com", parent: "Deepak Verma", parentPhone: "+919555555555", batch: batch10._id, userId: null },
+    { name: "Aarav Patel", phone: "student@test.com", parent: "Suresh Patel", parentPhone: "+919111111111", section: sectionJEE._id, userId: studentUser._id },
+    { name: "Diya Singh", phone: "diya@test.com", parent: "Ramesh Singh", parentPhone: "+919222222222", section: sectionJEE._id, userId: null },
+    { name: "Vihaan Gupta", phone: "vihaan@test.com", parent: "Anil Gupta", parentPhone: "+919333333333", section: sectionJEE._id, userId: null },
+    { name: "Ananya Rao", phone: "ananya@test.com", parent: "Kiran Rao", parentPhone: "+919444444444", section: section10._id, userId: null },
+    { name: "Rohan Verma", phone: "rohan@test.com", parent: "Deepak Verma", parentPhone: "+919555555555", section: section10._id, userId: null },
   ];
 
   const students = [];
@@ -120,7 +127,7 @@ async function seed() {
     }
     const student = await Student.create({
       user_id: uid,
-      batch_id: s.batch,
+      section_id: s.section,
       parent_name: s.parent,
       parent_phone: s.parentPhone,
       institute_id: institute._id,
@@ -128,7 +135,7 @@ async function seed() {
     students.push(student);
   }
 
-  // 7. Fees
+  // 8. Fees
   const today = new Date();
   const dueDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   for (let i = 0; i < students.length; i++) {
@@ -144,14 +151,14 @@ async function seed() {
     });
   }
 
-  // 8. Attendance (last 3 days)
+  // 9. Attendance (last 3 days)
   for (let d = 1; d <= 3; d++) {
     const date = new Date(today);
     date.setDate(today.getDate() - d);
     for (const student of students) {
       await Attendance.create({
         student_id: student._id,
-        batch_id: student.batch_id,
+        section_id: student.section_id,
         date,
         status: Math.random() > 0.2 ? "PRESENT" : "ABSENT",
         institute_id: institute._id,
@@ -159,16 +166,16 @@ async function seed() {
     }
   }
 
-  // 9. Test + Results
+  // 10. Test + Results
   const test = await Test.create({
     name: "Mid-Term Physics",
-    batch_id: batchJEE._id,
+    section_id: sectionJEE._id,
     date: new Date(),
     total_marks: 100,
     institute_id: institute._id,
   });
 
-  const jeeStudents = students.filter((s) => s.batch_id.toString() === batchJEE._id.toString());
+  const jeeStudents = students.filter((s) => s.section_id.toString() === sectionJEE._id.toString());
   for (const student of jeeStudents) {
     await Result.create({
       test_id: test._id,

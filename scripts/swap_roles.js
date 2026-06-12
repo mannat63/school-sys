@@ -31,7 +31,7 @@ async function fixRoles() {
         
         // If they had an ADMIN institute or anything... wait, as admin, their user_id wasn't in Student.
         // We probably need to ensure they have a Student document. Wait, the seed script creates a student document. 
-        // If the user hasn't reseeded, camper won't have a student_id linked batch.
+        // If the user hasn't reseeded, camper won't have a student_id linked section.
         // Let's just find the student document that used to belong to coachman and reassign it!
         if (coachman) {
             const oldCoachmanStudent = await Student.findOne({ user_id: coachman._id });
@@ -49,7 +49,7 @@ async function fixRoles() {
     
     // Actually, coachman might have had a Student document already.
     // Let's find ANY student document belonging to coachman and assign it to camper, if camper exists. 
-    // Wait, the Student model requires batch_id, parent_name, etc.
+    // Wait, the Student model requires section_id, parent_name, etc.
     // I should just update the phone field of ANY User whose phoneOrEmail is coachman but shouldn't be? No, emails are unique usually.
 
     console.log("Done.");

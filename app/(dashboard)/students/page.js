@@ -62,17 +62,18 @@ function DeleteModal({ open, onClose, onConfirm, name, deleting }) {
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([]);
-  const [batches, setBatches] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState("");
   const [search, setSearch] = useState("");
-  const [filterBatch, setFilterBatch] = useState("");
+  const [filterSection, setFilterSection] = useState("");
   const [riskType, setRiskType] = useState("");
   const [notifying, setNotifying] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [form, setForm] = useState({ name: "", phoneOrEmail: "+91 ", batch_id: "", parent_name: "", parent_phone: "+91 ", admission_date: "", total_fee: "", due_date: "" });
+  const [form, setForm] = useState({ name: "", email: "", student_phone: "+91 ", class_id: "", section_id: "", parent_name: "", parent_phone: "+91 ", admission_date: "", total_fee: "", due_date: "" });
   const [submitting, setSubmitting] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -88,6 +89,7 @@ export default function StudentsPage() {
   const [perfStudent, setPerfStudent] = useState(null);
   const [perfHistory, setPerfHistory] = useState([]);
   const [perfLoading, setPerfLoading] = useState(false);
+  const [expandedTest, setExpandedTest] = useState(null);
   const fileRef = useRef(null);
 
   const [toasts, setToasts] = useState([]);
@@ -104,13 +106,15 @@ export default function StudentsPage() {
     const risk = params.get("risk");
     const query = risk ? `?risk=${risk}` : "";
 
-    const [s, b, m] = await Promise.all([
+    const [s, b, cRes, m] = await Promise.all([
       fetch(`/api/students${query}`).then((r) => r.json()),
-      fetch("/api/batches").then((r) => r.json()),
+      fetch("/api/sections").then((r) => r.json()),
+      fetch("/api/classes").then((r) => r.json()),
       fetch("/api/me").then((r) => r.json()),
     ]);
     setStudents(Array.isArray(s) ? s : []);
-    setBatches(Array.isArray(b) ? b : []);
+    setSections(Array.isArray(b) ? b : []);
+    setClasses(Array.isArray(cRes) ? cRes : []);
     setRole(m?.role || "STUDENT");
     setRiskType(risk || "");
     setLoading(false);
@@ -118,15 +122,18 @@ export default function StudentsPage() {
 
   function openAdd() {
     setEditingStudent(null);
-    setForm({ name: "", phoneOrEmail: "+91 ", batch_id: "", parent_name: "", parent_phone: "+91 ", admission_date: "", total_fee: "", due_date: "" });
+    setForm({ name: "", email: "", student_phone: "+91 ", class_id: "", section_id: "", parent_name: "", parent_phone: "+91 ", admission_date: "", total_fee: "", due_date: "" });
     setModalOpen(true);
   }
   function openEdit(s) {
     setEditingStudent(s);
+    const sec = sections.find(sc => sc._id === (s.section_id?._id || s.section_id));
     setForm({
       name: s.user_id?.name || "",
-      phoneOrEmail: s.user_id?.phoneOrEmail || "",
-      batch_id: s.batch_id?._id || s.batch_id || "",
+      email: s.user_id?.phoneOrEmail || "",
+      student_phone: s.student_phone || "+91 ",
+      class_id: sec?.class_id?._id || sec?.class_id || "",
+      section_id: s.section_id?._id || s.section_id || "",
       parent_name: s.parent_name || "",
       parent_phone: s.parent_phone || "",
       admission_date: s.admission_date ? new Date(s.admission_date).toLocaleDateString("en-CA") : "",
@@ -143,10 +150,12 @@ export default function StudentsPage() {
     try {
       const url = editingStudent ? `/api/students/${editingStudent._id}` : "/api/students";
       const method = editingStudent ? "PUT" : "POST";
+      // Translate email into phoneOrEmail for the API
+      const payload = { ...form, phoneOrEmail: form.email };
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         toast(editingStudent ? "Student updated successfully" : "Student added successfully");
@@ -245,6 +254,7 @@ export default function StudentsPage() {
     setPerfModalOpen(true);
     setPerfLoading(true);
     setPerfHistory([]);
+    setExpandedTest(null);
     try {
       const res = await fetch(`/api/students/${s._id}/performance`);
       if (res.ok) {
@@ -288,11 +298,11 @@ export default function StudentsPage() {
     const matchesSearch = (
       (s.user_id?.name || "").toLowerCase().includes(q) ||
       (s.user_id?.phoneOrEmail || "").toLowerCase().includes(q) ||
-      (s.batch_id?.name || "").toLowerCase().includes(q) ||
+      (s.section_id?.name || "").toLowerCase().includes(q) ||
       (s.parent_name || "").toLowerCase().includes(q)
     );
-    const matchesBatch = filterBatch ? (s.batch_id?._id === filterBatch || s.batch_id === filterBatch) : true;
-    return matchesSearch && matchesBatch;
+    const matchesSection = filterSection ? (s.section_id?._id === filterSection || s.section_id === filterSection) : true;
+    return matchesSearch && matchesSection;
   });
 
   if (loading) {
@@ -373,13 +383,13 @@ export default function StudentsPage() {
             <input type="text" placeholder="Search students..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none transition-all shadow-sm" />
           </div>
           <select
-            value={filterBatch}
-            onChange={(e) => setFilterBatch(e.target.value)}
+            value={filterSection}
+            onChange={(e) => setFilterSection(e.target.value)}
             className="py-2 px-3 bg-white border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none shadow-sm min-w-[160px]"
           >
-            <option value="">All Batches</option>
-            {batches.map(b => (
-              <option key={b._id} value={b._id}>{b.name}</option>
+            <option value="">All Sections</option>
+            {sections.map(b => (
+              <option key={b._id} value={b._id}>{b.class_id?.name || "No Class"} - {b.name}</option>
             ))}
           </select>
         </div>
@@ -393,7 +403,7 @@ export default function StudentsPage() {
               <tr>
                 <th className="min-w-[180px]">Student</th>
                 <th className="min-w-[160px]">Contact</th>
-                <th className="min-w-[150px]">Batch</th>
+                <th className="min-w-[150px]">Section</th>
                 {riskType ? (
                    <th className="min-w-[130px]">Risk Metrics</th>
                 ) : (
@@ -428,7 +438,7 @@ export default function StudentsPage() {
                   <td>
                     <span className="badge badge-slate whitespace-nowrap">
                       <Users size={12} className="mr-1" />
-                      {s.batch_id?.name || "No Batch"}
+                      {s.section_id ? `${s.section_id.class_id?.name || "No Class"} - ${s.section_id.name}` : "No Section"}
                     </span>
                   </td>
                   {riskType ? (
@@ -523,16 +533,31 @@ export default function StudentsPage() {
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
               <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. Aarav Patel" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email or Phone</label>
-              <input required value={form.phoneOrEmail} onChange={(e) => setForm({ ...form, phoneOrEmail: e.target.value })} className="input-field" placeholder="e.g. aarav@example.com" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Student Email</label>
+                <input required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input-field" placeholder="e.g. aarav@example.com" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Student Phone</label>
+                <input value={form.student_phone} onChange={(e) => setForm({ ...form, student_phone: e.target.value })} className="input-field" placeholder="e.g. +91 98000..." />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Batch</label>
-              <select required value={form.batch_id} onChange={(e) => setForm({ ...form, batch_id: e.target.value })} className="input-field">
-                <option value="">Select batch...</option>
-                {batches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Class</label>
+                <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value, section_id: "" })} className="input-field">
+                  <option value="">Select class...</option>
+                  {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Section</label>
+                <select required value={form.section_id} onChange={(e) => setForm({ ...form, section_id: e.target.value })} className="input-field" disabled={!form.class_id}>
+                  <option value="">Select section...</option>
+                  {sections.filter(s => (s.class_id?._id || s.class_id) === form.class_id).map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -575,7 +600,7 @@ export default function StudentsPage() {
         <div className="modal-body space-y-4">
           <div className="bg-gray-50 text-gray-600 text-sm p-3.5 rounded-lg border border-gray-200">
             <p className="font-semibold text-gray-800 mb-1">Required Headers:</p>
-            <code className="bg-white px-2.5 py-1 rounded-md text-slate-700 text-xs border border-gray-200 font-mono">name, parent_phone, batch_name, admission_date</code>
+            <code className="bg-white px-2.5 py-1 rounded-md text-slate-700 text-xs border border-gray-200 font-mono">name, parent_phone, section_name, admission_date</code>
           </div>
           
           <div 
@@ -626,7 +651,11 @@ export default function StudentsPage() {
                  </div>
                  <div>
                     <h3 className="font-bold text-gray-900 leading-none">{perfStudent.user_id?.name}</h3>
-                    <p className="text-xs text-gray-500 mt-1">{perfStudent.batch_id?.name || "No Batch"}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {perfStudent.section_id?.class_id?.name
+                        ? `${perfStudent.section_id.class_id.name} · ${perfStudent.section_id.name}`
+                        : (perfStudent.section_id?.name || "No Section")}
+                    </p>
                  </div>
               </div>
               <div className="text-right">
@@ -643,23 +672,64 @@ export default function StudentsPage() {
                   <p className="text-sm font-medium">Crunching records...</p>
                </div>
             ) : perfHistory.length > 0 ? (
-               <div className="space-y-3">
-                 {perfHistory.map((res, i) => (
-                   <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-slate-200 transition-colors bg-white shadow-sm">
-                      <div className="space-y-1">
-                         <div className="font-bold text-gray-800 text-sm">{res.test_id?.name || "Unknown test"}</div>
-                         <div className="text-[10px] text-gray-400 font-medium tracking-tight uppercase flex items-center gap-1.5 border-t border-gray-50 pt-1">
-                            {res.test_id?.date ? new Date(res.test_id.date).toLocaleDateString('en-GB') : "—"}
+               <div className="space-y-2">
+                 {perfHistory.map((res, i) => {
+                   const pct = res.percentage ?? 0;
+                   const isExpanded = expandedTest === i;
+                   return (
+                     <div key={i} className="rounded-lg border border-gray-100 overflow-hidden shadow-sm">
+                       {/* Row header — clickable */}
+                       <div
+                         onClick={() => setExpandedTest(isExpanded ? null : i)}
+                         className="flex items-center justify-between p-3 bg-white hover:bg-slate-50 cursor-pointer transition-colors"
+                       >
+                         <div className="space-y-0.5">
+                           <div className="font-bold text-gray-800 text-sm">{res.test_id?.name || "Unknown test"}</div>
+                           <div className="text-[10px] text-gray-400 font-medium uppercase flex items-center gap-1.5">
+                             {res.test_id?.section || ""}
+                             {res.test_id?.section && res.test_id?.date ? " · " : ""}
+                             {res.test_id?.date ? new Date(res.test_id.date).toLocaleDateString("en-GB") : "—"}
+                           </div>
                          </div>
-                      </div>
-                      <div className="text-right">
-                         <div className="text-sm font-bold text-slate-700">{res.marks} / {res.test_id?.total_marks || 100}</div>
-                         <div className={`text-[10px] font-bold ${ (res.marks / (res.test_id?.total_marks || 100)) >= 0.75 ? "text-emerald-500" : "text-amber-500" }`}>
-                            {((res.marks / (res.test_id?.total_marks || 100)) * 100).toFixed(1)}%
+                         <div className="text-right flex items-center gap-3">
+                           <div>
+                             <div className="text-sm font-bold text-slate-700">{res.total_earned ?? "—"} / {res.total_marks ?? "—"}</div>
+                             <div className={`text-[11px] font-bold ${ pct >= 75 ? "text-emerald-500" : pct >= 40 ? "text-amber-500" : "text-red-500" }`}>
+                               {pct.toFixed(1)}%
+                             </div>
+                           </div>
+                           <span className="text-gray-300 text-sm">{isExpanded ? "▲" : "▼"}</span>
                          </div>
-                      </div>
-                   </div>
-                 ))}
+                       </div>
+
+                       {/* Expanded subject breakdown */}
+                       {isExpanded && res.subject_marks?.length > 0 && (
+                         <div className="border-t border-gray-100 bg-gray-50/80">
+                           <table className="w-full text-xs">
+                             <thead>
+                               <tr className="border-b border-gray-100">
+                                 <th className="text-left px-4 py-2 font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
+                                 <th className="text-right px-4 py-2 font-semibold text-gray-500 uppercase tracking-wider">Max</th>
+                                 <th className="text-right px-4 py-2 font-semibold text-gray-500 uppercase tracking-wider">Scored</th>
+                                 <th className="text-right px-4 py-2 font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                               </tr>
+                             </thead>
+                             <tbody>
+                               {res.subject_marks.map((sm, j) => (
+                                 <tr key={j} className="border-b border-gray-100 last:border-0">
+                                   <td className="px-4 py-2 font-medium text-gray-700">{sm.subject}</td>
+                                   <td className="px-4 py-2 text-right text-gray-400 font-mono">{sm.max_marks}</td>
+                                   <td className="px-4 py-2 text-right font-bold text-gray-800 font-mono">{sm.marks}</td>
+                                   <td className={`px-4 py-2 text-right font-bold ${ sm.pct >= 75 ? "text-emerald-600" : sm.pct >= 40 ? "text-amber-600" : "text-red-600" }`}>{sm.pct}%</td>
+                                 </tr>
+                               ))}
+                             </tbody>
+                           </table>
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })}
                </div>
             ) : (
                <div className="py-20 text-center text-gray-400 border-dashed border border-gray-100 rounded-lg">

@@ -337,10 +337,17 @@ function FeeModal({ student, fees, onClose, onRefresh, role }) {
 export default function FeesPage() {
   const [fees, setFees]         = useState([]);
   const [students, setStudents] = useState([]);
+  const [classes, setClasses]   = useState([]);
+  const [sections, setSections] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [role, setRole]         = useState("");
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState("ALL"); // ALL | OVERDUE | UPCOMING | CLEAR
+  
+  // Tree Filter
+  const [filterClass, setFilterClass]     = useState("");
+  const [filterSection, setFilterSection] = useState("");
+
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm]         = useState({ student_id: "", total_amount: "", due_date: "" });
@@ -354,14 +361,18 @@ export default function FeesPage() {
 
   async function loadData() {
     setLoading(true);
-    const [f, s, m, dRes] = await Promise.all([
+    const [f, s, m, dRes, c, sec] = await Promise.all([
       fetch("/api/fees").then(r => r.json()),
       fetch("/api/students").then(r => r.json()),
       fetch("/api/me").then(r => r.json()),
       fetch("/api/defaulters").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch("/api/classes").then(r => r.json()),
+      fetch("/api/sections").then(r => r.json()),
     ]);
     setFees(Array.isArray(f) ? f : []);
     setStudents(Array.isArray(s) ? s : []);
+    setClasses(Array.isArray(c) ? c : []);
+    setSections(Array.isArray(sec) ? sec : []);
     if (dRes && Array.isArray(dRes)) setDefaulters(dRes);
     setRole(m?.role || "STUDENT");
     setLoading(false);
@@ -443,6 +454,14 @@ export default function FeesPage() {
       const name = (s.user_id?.name || s.parent_name || "").toLowerCase();
       if (search && !name.includes(search.toLowerCase())) return false;
 
+      if (filterClass) {
+         const secObj = sections.find(sec => sec._id === (s.section_id?._id || s.section_id));
+         const secClassId = secObj?.class_id?._id || secObj?.class_id;
+         if (!secObj || secClassId !== filterClass) return false;
+      }
+      
+      if (filterSection && (s.section_id?._id || s.section_id) !== filterSection) return false;
+
       const sid = String(s._id);
       const studentFees = feesByStudent[sid] || [];
 
@@ -456,7 +475,7 @@ export default function FeesPage() {
       }
       return true;
     });
-  }, [students, search, filter, feesByStudent]);
+  }, [students, search, filter, feesByStudent, filterClass, filterSection, sections]);
 
   // Stats
   const overdueStudents = students.filter(s =>
@@ -549,23 +568,45 @@ export default function FeesPage() {
 
       {/* ─ Search + Filter ─ */}
       {role !== "STUDENT" && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-            <input
-              placeholder="Search student…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input-field pl-9 !py-2 text-sm"
-            />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+              <input
+                placeholder="Search student…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="input-field pl-9 !py-2 text-sm"
+              />
+            </div>
+            <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
+              {[["ALL", "All"], ["OVERDUE", "Overdue"], ["UPCOMING", "Upcoming"], ["CLEAR", "Clear"]].map(([val, lbl]) => (
+                <button key={val} onClick={() => setFilter(val)}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filter === val ? "bg-slate-700 text-white shadow-md" : "text-gray-500 hover:bg-gray-50"}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-            {[["ALL", "All"], ["OVERDUE", "Overdue"], ["UPCOMING", "Upcoming"], ["CLEAR", "Clear"]].map(([val, lbl]) => (
-              <button key={val} onClick={() => setFilter(val)}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filter === val ? "bg-slate-700 text-white shadow-md" : "text-gray-500 hover:bg-gray-50"}`}>
-                {lbl}
-              </button>
-            ))}
+          
+          <div className="flex flex-wrap items-center gap-3 bg-gray-50 p-2 border border-gray-200 rounded-lg">
+             <div className="flex items-center gap-2">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Class</span>
+                 <select value={filterClass} onChange={(e) => { setFilterClass(e.target.value); setFilterSection(""); }} className="input-field !py-1 text-xs h-auto min-w-[120px]">
+                   <option value="">All Classes</option>
+                   {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                 </select>
+             </div>
+             <div className="flex items-center gap-2">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Section</span>
+                 <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} className="input-field !py-1 text-xs h-auto min-w-[120px]" disabled={!filterClass}>
+                   <option value="">All Sections</option>
+                   {sections.filter(s => {
+                     const cid = s.class_id?._id || s.class_id;
+                     return !filterClass || cid === filterClass;
+                   }).map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                 </select>
+             </div>
           </div>
         </div>
       )}

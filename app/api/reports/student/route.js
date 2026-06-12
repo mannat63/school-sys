@@ -6,7 +6,8 @@ import Attendance from "@/models/Attendance";
 import Fee from "@/models/Fee";
 import Test from "@/models/Test";
 import Result from "@/models/Result";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
+import Class from "@/models/Class";
 import Institute from "@/models/Institute";
 
 /**
@@ -55,7 +56,11 @@ export async function GET(req) {
 
     const student = await Student.findOne({ user_id: authUser._id })
         .populate("user_id", "name phoneOrEmail")
-        .populate("batch_id", "name")
+        .populate({
+          path: "section_id",
+          select: "name class_id",
+          populate: { path: "class_id", select: "name" },
+        })
         .lean();
 
     if (!student) {
@@ -75,7 +80,7 @@ export async function GET(req) {
         student_id: sId
       }).lean(),
       Test.find({
-        batch_id: student.batch_id?._id,
+        section_id: student.section_id?._id,
         date: { $gte: start, $lte: end }
       }).lean()
     ]);
@@ -142,7 +147,9 @@ export async function GET(req) {
             id: sId,
             name: student.user_id?.name || student.parent_name || "Unknown",
             parent_phone: student.parent_phone,
-            batch: student.batch_id?.name || "Unknown Course"
+            className: student.section_id?.class_id?.name || "Unassigned",
+            sectionName: student.section_id?.name || "Unassigned",
+            section: `${student.section_id?.class_id?.name || ""} - ${student.section_id?.name || ""}`.trim() || "Unassigned",
         },
         attendance: {
             total_days: totalDays,

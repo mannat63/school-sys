@@ -9,7 +9,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
-    const batchId = searchParams.get("batchId");
+    const sectionId = searchParams.get("sectionId");
     const studentId = searchParams.get("studentId");
 
     if (!dateFrom || !dateTo) {
@@ -20,7 +20,7 @@ export async function GET(req) {
         institute_id: authUser.institute_id,
         dateFrom,
         dateTo,
-        batchId,
+        sectionId,
         studentId
     });
 

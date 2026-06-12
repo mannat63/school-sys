@@ -11,6 +11,7 @@ export default function TeachersPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "+91 " });
   const [role, setRole] = useState("");
+  const [availableSubjects, setAvailableSubjects] = useState([]);
 
   // Edit state
   const [editId, setEditId] = useState(null);
@@ -22,10 +23,12 @@ export default function TeachersPage() {
     Promise.all([
       fetch("/api/teachers").then((r) => r.json()),
       fetch("/api/me").then((r) => r.json()),
+      fetch("/api/subjects").then((r) => r.json()),
     ])
-      .then(([d, m]) => {
+      .then(([d, m, s]) => {
         setTeachers(Array.isArray(d) ? d : []);
         setRole(m?.role || "STUDENT");
+        setAvailableSubjects(Array.isArray(s) ? s : []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -181,9 +184,31 @@ export default function TeachersPage() {
               disabled={creating}
             />
           </div>
-          <button type="submit" className="btn-primary h-[42px]" disabled={creating}>
-            {creating ? "Saving..." : "Save Teacher"}
-          </button>
+          <div className="col-span-1 sm:col-span-3 pb-2">
+             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+               Assign Subjects
+             </label>
+             <div className="flex flex-wrap gap-2">
+                {availableSubjects.map(sub => (
+                   <label key={sub._id} className="flex items-center gap-1.5 bg-white border border-gray-200 px-3 py-1.5 rounded-md text-xs cursor-pointer hover:bg-gray-50">
+                      <input type="checkbox" className="accent-slate-700"
+                        checked={form.subjects?.includes(sub._id) || false}
+                        onChange={(e) => {
+                           const s = form.subjects || [];
+                           if (e.target.checked) setForm({...form, subjects: [...s, sub._id]});
+                           else setForm({...form, subjects: s.filter(x => x !== sub._id)});
+                        }}
+                      />
+                      {sub.name}
+                   </label>
+                ))}
+             </div>
+          </div>
+          <div className="col-span-1 sm:col-span-3">
+             <button type="submit" className="btn-primary" disabled={creating}>
+               {creating ? "Saving..." : "Save Teacher"}
+             </button>
+          </div>
         </form>
       )}
 
@@ -223,6 +248,21 @@ export default function TeachersPage() {
                     className="input-field flex-1 max-w-[150px]"
                   />
                 </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                   {availableSubjects.map(sub => (
+                     <label key={sub._id} className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-md text-[10px] uppercase font-bold text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <input type="checkbox" className="accent-slate-700 w-3 h-3"
+                          checked={editForm.subjects?.includes(sub._id) || false}
+                          onChange={(e) => {
+                             const s = editForm.subjects || [];
+                             if (e.target.checked) setEditForm({...editForm, subjects: [...s, sub._id]});
+                             else setEditForm({...editForm, subjects: s.filter(x => x !== sub._id)});
+                          }}
+                        />
+                        {sub.name}
+                     </label>
+                  ))}
+                </div>
                 <div className="flex gap-2 justify-end">
                   <button
                     type="button"
@@ -258,8 +298,15 @@ export default function TeachersPage() {
                     <Mail size={11} />
                     {t.user_id?.phoneOrEmail || "—"}
                   </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {t.subjects?.map(s => (
+                       <span key={s._id} className="text-[9px] uppercase font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">{s.name}</span>
+                    ))}
+                    {(!t.subjects || t.subjects.length === 0) && (
+                       <span className="text-[9px] uppercase font-bold text-red-400 bg-red-50 px-1.5 py-0.5 rounded-sm border border-red-100">No Subjects</span>
+                    )}
+                  </div>
                 </div>
-                <div className="badge badge-slate mr-1">Faculty</div>
                 {role === "ADMIN" && (
                   <div className="flex items-center gap-1.5">
                     <button
@@ -269,6 +316,7 @@ export default function TeachersPage() {
                           name: t.user_id?.name || "",
                           email: t.user_id?.phoneOrEmail?.includes('@') ? t.user_id?.phoneOrEmail : "",
                           phone: t.user_id?.phoneOrEmail?.includes('@') ? "" : (t.user_id?.phoneOrEmail || "+91 "),
+                          subjects: t.subjects?.map(s => typeof s === 'object' ? s._id : s) || []
                         });
                       }}
                       className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"

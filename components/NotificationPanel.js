@@ -20,6 +20,7 @@ export default function NotificationPanel({ isOpen, onClose }) {
       if (res.ok) {
         setNotifications(await res.json());
       }
+      await fetch("/api/notifications/read", { method: "POST" });
     } catch (err) {
       console.error(err);
     }
@@ -76,12 +77,17 @@ export default function NotificationPanel({ isOpen, onClose }) {
                      <span className="p-1.5 bg-white rounded-md shadow-sm">
                        {iconMap[n.type] || <Bell size={14} className="text-gray-600"/>}
                      </span>
-                     <div className="flex-1 min-w-0">
+                     <div className="flex-1 min-w-0 flex items-center gap-2">
                        <h4 className="text-xs font-bold text-gray-800 truncate">{n.recipient_name}</h4>
-                       <span className="text-[10px] text-gray-500 font-mono">{n.recipient_phone}</span>
+                       {!n.is_read && (
+                         <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm shadow-sm leading-none">
+                           NEW
+                         </span>
+                       )}
                      </div>
-                     <div className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
-                       {new Date(n.created_at).toLocaleDateString()}
+                     <div className="text-[10px] text-gray-400 font-medium whitespace-nowrap flex flex-col items-end">
+                       <span>{new Date(n.created_at).toLocaleDateString()}</span>
+                       <span className="font-mono text-[9px] opacity-70 mt-0.5">{n.recipient_phone}</span>
                      </div>
                   </div>
                   <p className="text-xs text-slate-700 font-medium leading-relaxed mb-2">

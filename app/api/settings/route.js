@@ -30,6 +30,7 @@ export async function POST(req) {
       if (body.feeReminders !== undefined) settings.feeReminders = body.feeReminders;
       if (body.attendanceAlerts !== undefined) settings.attendanceAlerts = body.attendanceAlerts;
       if (body.razorpay_link !== undefined) settings.razorpay_link = body.razorpay_link;
+      if (body.timetable_config !== undefined) settings.timetable_config = body.timetable_config;
       await settings.save();
     }
 

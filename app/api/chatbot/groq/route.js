@@ -6,7 +6,7 @@ import Groq from "groq-sdk";
 
 import Payment from "@/models/Payment";
 import Student from "@/models/Student";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Fee from "@/models/Fee";
 import Attendance from "@/models/Attendance";
 import Result from "@/models/Result";
@@ -39,7 +39,7 @@ export async function POST(req) {
     // 1. ALL Students with their details
     const allStudents = await Student.find({ institute_id: instId })
       .populate("user_id", "name phoneOrEmail")
-      .populate("batch_id", "name")
+      .populate("section_id", "name")
       .lean();
 
     // 2. ALL Fees with student linkage
@@ -90,7 +90,7 @@ export async function POST(req) {
       return {
         name: s.user_id?.name || "Unknown",
         contact: s.user_id?.phoneOrEmail || "",
-        batch: s.batch_id?.name || "Unassigned",
+        section: s.section_id?.name || "Unassigned",
         parent_name: s.parent_name || "",
         parent_phone: s.parent_phone || "",
         admission_date: s.admission_date ? new Date(s.admission_date).toLocaleDateString("en-CA") : "",
@@ -105,19 +105,19 @@ export async function POST(req) {
       };
     });
 
-    // 3. Batches with student counts
-    const allBatches = await Batch.find({ institute_id: instId })
+    // 3. Sections with student counts
+    const allSections = await Section.find({ institute_id: instId })
       .populate("teacher_id", "user_id")
       .lean();
     
-    const batchSummary = allBatches.map(b => {
-      const studentsInBatch = studentsFull.filter(s => s.batch === b.name);
+    const sectionSummary = allSections.map(b => {
+      const studentsInSection = studentsFull.filter(s => s.section === b.name);
       return {
         name: b.name,
         timing: b.timing || "",
-        student_count: studentsInBatch.length,
-        total_fees_due: studentsInBatch.reduce((sum, s) => sum + s.fee_due, 0),
-        total_fees_collected: studentsInBatch.reduce((sum, s) => sum + s.fee_paid, 0)
+        student_count: studentsInSection.length,
+        total_fees_due: studentsInSection.reduce((sum, s) => sum + s.fee_due, 0),
+        total_fees_collected: studentsInSection.reduce((sum, s) => sum + s.fee_paid, 0)
       };
     });
 
@@ -132,20 +132,20 @@ export async function POST(req) {
     // 5. Revenue
     const totalRevenue = allFees.reduce((sum, f) => sum + (f.paid_amount || 0), 0);
 
-    // 6. Attendance per batch
+    // 6. Attendance per section
     const attendanceAgg = await Attendance.aggregate([
       { $match: { institute_id: instId } },
-      { $group: { _id: { batch_id: "$batch_id", status: "$status" }, count: { $sum: 1 } } }
+      { $group: { _id: { section_id: "$section_id", status: "$status" }, count: { $sum: 1 } } }
     ]);
     const attendanceLookup = {};
     for (const a of attendanceAgg) {
-      const batchId = a._id.batch_id?.toString();
-      if (!attendanceLookup[batchId]) attendanceLookup[batchId] = { present: 0, absent: 0 };
-      if (a._id.status === "PRESENT") attendanceLookup[batchId].present += a.count;
-      if (a._id.status === "ABSENT") attendanceLookup[batchId].absent += a.count;
+      const sectionId = a._id.section_id?.toString();
+      if (!attendanceLookup[sectionId]) attendanceLookup[sectionId] = { present: 0, absent: 0 };
+      if (a._id.status === "PRESENT") attendanceLookup[sectionId].present += a.count;
+      if (a._id.status === "ABSENT") attendanceLookup[sectionId].absent += a.count;
     }
-    for (const b of batchSummary) {
-      const bDoc = allBatches.find(x => x.name === b.name);
+    for (const b of sectionSummary) {
+      const bDoc = allSections.find(x => x.name === b.name);
       if (bDoc) {
         const att = attendanceLookup[bDoc._id.toString()];
         b.total_present = att?.present || 0;
@@ -164,10 +164,10 @@ export async function POST(req) {
       date: todayUTC
     }).populate({
         path: "student_id",
-        select: "user_id batch_id",
+        select: "user_id section_id",
         populate: [
           { path: "user_id", select: "name" },
-          { path: "batch_id", select: "name" }
+          { path: "section_id", select: "name" }
         ]
       })
       .lean();
@@ -176,14 +176,14 @@ export async function POST(req) {
       .filter(a => a.status === "ABSENT" && a.student_id != null)
       .map(a => ({
         name: a.student_id?.user_id?.name || "Unknown",
-        batch: a.student_id?.batch_id?.name || "Unknown"
+        section: a.student_id?.section_id?.name || "Unknown"
       }));
 
     const todayPresent = todayAttendance
       .filter(a => a.status === "PRESENT" && a.student_id != null)
       .map(a => ({
         name: a.student_id?.user_id?.name || "Unknown",
-        batch: a.student_id?.batch_id?.name || "Unknown"
+        section: a.student_id?.section_id?.name || "Unknown"
       }));
 
     // 8. Recent test results — single aggregation with $lookup (eliminates N+1)
@@ -201,13 +201,13 @@ export async function POST(req) {
       },
       {
         $lookup: {
-          from: "batches",
-          localField: "batch_id",
+          from: "sections",
+          localField: "section_id",
           foreignField: "_id",
-          as: "batchInfo",
+          as: "sectionInfo",
         },
       },
-      { $unwind: { path: "$batchInfo", preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$sectionInfo", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "students",
@@ -236,7 +236,7 @@ export async function POST(req) {
 
       return {
         test_name: t.name,
-        batch: t.batchInfo?.name || "Unknown",
+        section: t.sectionInfo?.name || "Unknown",
         date: new Date(t.date).toISOString().split("T")[0],
         total_marks: t.total_marks,
         scores: (t.results || []).map((r) => {
@@ -274,7 +274,7 @@ export async function POST(req) {
         total_unpaid_all: totalUnpaidAll,
       },
       students: studentsFull,
-      batches: batchSummary,
+      sections: sectionSummary,
       courses: courseList,
       todays_attendance: {
         total_present: todayPresent.length,
@@ -296,7 +296,7 @@ Provide deep, actionable intelligence. DO NOT just repeat the data back. Act lik
 RULES:
 1. Highlight critical risks (e.g., high fee defaulters, low attendance) and propose concrete interventions.
 2. Formulate aggressive fee recovery strategies based on the defaulters (OVERDUE students).
-3. Evaluate batch performance and suggest re-balancing or teacher attention shifts if needed.
+3. Evaluate section performance and suggest re-balancing or teacher attention shifts if needed.
 4. Highlight top performers and propose reward mechanisms to boost engagement.
 5. Answer user queries accurately using the data.
 6. Use clear, professional formatting (headers, bold text, bullet points). Format currency as ₹XX,XXX.`;

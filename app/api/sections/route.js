@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db/mongodb";
 import { getAuthUser, requireRole } from "@/lib/auth";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Teacher from "@/models/Teacher";
 import Student from "@/models/Student";
 import Course from "@/models/Course";
 import User from "@/models/User";
 import Institute from "@/models/Institute";
+import Class from "@/models/Class";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET(req) {
     const authUser = await getAuthUser();
     
     if (!authUser || !authUser.institute_id) {
-      console.error("Batches GET: Unauthorized or missing institute_id");
+      console.error("Sections GET: Unauthorized or missing institute_id");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -28,29 +29,27 @@ export async function GET(req) {
         { _id: 1 }
       ).lean();
       if (!teacher) return NextResponse.json([], { status: 200 });
-      query.teacher_id = teacher._id;
+      const { default: TimetableEntry } = await import("@/models/TimetableEntry");
+      const timetables = await TimetableEntry.find({ teacher_id: teacher._id }, { section_id: 1 }).lean();
+      const sectionIds = timetables.map(t => t.section_id);
+      query._id = { $in: sectionIds };
     } else if (authUser.role === "STUDENT") {
       const student = await Student.findOne(
         { user_id: authUser._id },
-        { _id: 1, batch_id: 1 }
+        { _id: 1, class_id: 1, section_id: 1 }
       ).lean();
       if (!student) return NextResponse.json([], { status: 200 });
-      query._id = student.batch_id;
+      query._id = student.section_id;
     }
 
-    const batches = await Batch.find(query)
-      .select("name timing course_id teacher_id")
-      .populate("course_id", "name")
-      .populate({
-        path: "teacher_id",
-        select: "user_id",
-        populate: { path: "user_id", select: "name phoneOrEmail" },
-      })
+    const sections = await Section.find(query)
+      .select("name class_id")
+      .populate("class_id", "name")
       .lean();
 
-    return NextResponse.json(batches);
+    return NextResponse.json(sections);
   } catch (error) {
-    console.error("Batches GET error:", error);
+    console.error("Sections GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -61,19 +60,17 @@ export async function POST(req) {
     const authUser = await requireRole(["ADMIN"]);
 
     const body = await req.json();
-    const { name, course_id, teacher_id, timing } = body;
+    const { name, class_id } = body;
 
-    const batch = await Batch.create({
+    const section = await Section.create({
       name,
-      course_id,
-      teacher_id,
-      timing,
+      class_id,
       institute_id: authUser.institute_id,
     });
 
-    return NextResponse.json(batch, { status: 201 });
+    return NextResponse.json(section, { status: 201 });
   } catch (error) {
-    console.error("Batches POST error:", error);
+    console.error("Sections POST error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -9,12 +9,12 @@ export async function POST(req) {
   try {
     const authUser = await requireRole(["ADMIN"]);
     const body = await req.json();
-    const { dateFrom, dateTo, batchId } = body;
+    const { dateFrom, dateTo, sectionId } = body;
 
     const url = new URL("http://localhost/api/reports/admin");
     if (dateFrom) url.searchParams.set("dateFrom", dateFrom);
     if (dateTo) url.searchParams.set("dateTo", dateTo);
-    if (batchId) url.searchParams.set("batchId", batchId);
+    if (sectionId) url.searchParams.set("sectionId", sectionId);
     
     // Simulate Request to reuse Admin Aggregation Logic perfectly
     const mockReq = { url: url.toString() }; 
@@ -47,7 +47,7 @@ export async function POST(req) {
                     id: s.student.id,
                     name: s.student.name,
                     parent_phone: s.student.parent_phone,
-                    batch_name: s.student.batch
+                    section_name: s.student.section
                 },
                 data: {
                     period: `${dateFrom} to ${dateTo}`,

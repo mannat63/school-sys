@@ -2,8 +2,8 @@ import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 
 export const metadata = {
-  title: "Alpha Coaching | Academic Excellence",
-  description: "A modern management platform for coaching institutes. Track students, fees, attendance, and results with ease.",
+  title: "Alpha School | Academic Excellence",
+  description: "A modern management platform for schools. Track students, fees, attendance, and results with ease.",
 };
 
 export default function RootLayout({ children }) {

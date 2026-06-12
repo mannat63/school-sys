@@ -10,18 +10,18 @@ export async function PUT(req, { params }) {
     const authUser = await requireRole(["ADMIN", "TEACHER"]);
     const { id } = await params;
     const body = await req.json();
-    const { name, batch_id, date, subjects } = body;
+    const { name, section_id, date, subjects } = body;
 
     const test = await Test.findById(id);
     if (!test) return NextResponse.json({ error: "Test not found" }, { status: 404 });
 
     // Consistency check for Teacher role
     if (authUser.role === "TEACHER") {
-      // In a real app, verify batch belongs to teacher here if needed
+      // In a real app, verify section belongs to teacher here if needed
     }
 
     test.name = name;
-    test.batch_id = batch_id;
+    test.section_id = section_id;
     test.date = new Date(date);
     test.subjects = subjects;
     await test.save();

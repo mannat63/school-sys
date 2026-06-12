@@ -8,11 +8,11 @@ const adminLinks = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { href: "/students", label: "Students", Icon: Users },
   { href: "/teachers", label: "Teachers", Icon: GraduationCap },
-  { href: "/courses", label: "Courses", Icon: BookOpen },
-  { href: "/batches", label: "Batches", Icon: Layers },
+  { href: "/subjects", label: "Subjects", Icon: BookOpen },
+  { href: "/sections", label: "Classes & Sections", Icon: Layers },
+  { href: "/timetable", label: "Timetable", Icon: Calendar },
   { href: "/fees", label: "Fees", Icon: IndianRupee },
   { href: "/attendance", label: "Attendance", Icon: CalendarCheck },
-  { href: "/attendance-calendar", label: "Calendar", Icon: Calendar },
   { href: "/tests", label: "Tests & Results", Icon: FileText },
   { href: "/reports", label: "Reports", Icon: PieChart },
   { href: "/automation", label: "Settings", Icon: Settings },
@@ -20,15 +20,19 @@ const adminLinks = [
 
 const teacherLinks = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-  { href: "/batches", label: "My Batches", Icon: Layers },
+  { href: "/sections", label: "My Sections", Icon: Layers },
+  { href: "/timetable", label: "Timetable", Icon: Calendar },
   { href: "/attendance", label: "Attendance", Icon: CalendarCheck },
   { href: "/attendance-calendar", label: "Calendar", Icon: Calendar },
+  { href: "/homework", label: "Homework", Icon: FileText },
   { href: "/tests", label: "Results", Icon: FileText },
 ];
 
 const studentLinks = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/timetable", label: "Timetable", Icon: Calendar },
   { href: "/attendance", label: "Attendance", Icon: CalendarCheck },
+  { href: "/homework", label: "Homework", Icon: FileText },
   { href: "/fees", label: "Fees", Icon: IndianRupee },
   { href: "/tests", label: "Results", Icon: FileText },
   { href: "/reports", label: "My Report", Icon: PieChart },
@@ -50,10 +54,10 @@ export default function Sidebar({ role, userName, onClose, onOpenNotification })
       <div className="px-5 py-4 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm overflow-hidden border border-gray-100">
-            <img src="/logo.png" alt="Alpha Coaching" className="w-full h-full object-cover" />
+            <img src="/logo.png" alt="Alpha School" className="w-full h-full object-cover" />
           </div>
           <div className="flex flex-col">
-            <span className="font-extrabold text-[#111827] text-[15px] leading-tight tracking-tight">Alpha Coaching</span>
+            <span className="font-extrabold text-[#111827] text-[15px] leading-tight tracking-tight">Alpha School</span>
             <span className="text-[9px] font-bold text-[#6B7280] uppercase tracking-[0.2em] mt-0.5">Academic Excellence</span>
           </div>
         </div>

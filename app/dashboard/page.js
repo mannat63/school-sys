@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { LayoutDashboard, Users, UserPlus, FileText, Calendar, Wallet, Bell, Target, TrendingUp, AlertTriangle, ArrowUpRight, ChevronRight, Activity } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { LayoutDashboard, Users, UserPlus, FileText, Calendar, Wallet, Bell, Target, TrendingUp, AlertTriangle, ArrowUpRight, ChevronRight, Activity, BookOpen } from "lucide-react";
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, LineChart, Line, Legend } from 'recharts';
 
 const COLORS = ['#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 const BAR_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
@@ -14,6 +14,46 @@ export default function DashboardPage() {
   const [graphs, setGraphs] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [testClassFilter, setTestClassFilter] = useState("All");
+
+  const testClasses = useMemo(() => {
+    if (!graphs?.tests) return [];
+    const classes = new Set();
+    graphs.tests.forEach(t => {
+      const cname = t.name.split(" - ")[0];
+      if (cname) classes.add(cname);
+    });
+    return ["All", ...Array.from(classes).sort()];
+  }, [graphs]);
+
+  const filteredTests = useMemo(() => {
+    if (!graphs?.tests) return [];
+    if (testClassFilter === "All") return graphs.tests;
+    return graphs.tests.filter(t => t.name.startsWith(testClassFilter + " -"));
+  }, [graphs, testClassFilter]);
+
+  const testTimelineFormatted = useMemo(() => {
+    if (!graphs?.testTimeline) return [];
+    const grouped = {};
+    const sections = new Set();
+    
+    // Group by date
+    graphs.testTimeline.forEach(t => {
+      const date = t.dateFormatted;
+      if (!grouped[date]) grouped[date] = { date, fullDate: t.date };
+      
+      const secName = t.sectionName;
+      if (testClassFilter === "All" || t.className === testClassFilter) {
+        grouped[date][secName] = t.avgScore;
+        sections.add(secName);
+      }
+    });
+    
+    return {
+      data: Object.values(grouped).sort((a,b) => a.fullDate.localeCompare(b.fullDate)),
+      sections: Array.from(sections).sort()
+    };
+  }, [graphs, testClassFilter]);
 
   useEffect(() => {
     loadStats();
@@ -24,17 +64,26 @@ export default function DashboardPage() {
       const baseData = await fetch("/api/dashboard").then((r) => r.json()).catch(() => ({}));
       
       let extraDataPromise = Promise.resolve(null);
-      if (baseData?.role === "ADMIN" || baseData?.role === "TEACHER") {
+      let graphPromise = Promise.resolve(null);
+      let attRiskPromise = Promise.resolve(null);
+      let feeRiskPromise = Promise.resolve(null);
+      let perfRiskPromise = Promise.resolve(null);
+
+      if (baseData?.role === "ADMIN") {
         extraDataPromise = fetch("/api/dashboard/summary").then(r => r.ok ? r.json() : {});
+        graphPromise = fetch("/api/dashboard/graphs").then(r => r.ok ? r.json() : null).catch(() => null);
+        attRiskPromise = fetch("/api/insights/attendance-risk").then(r => r.ok ? r.json() : null).catch(() => null);
+        feeRiskPromise = fetch("/api/insights/fee-defaulters").then(r => r.ok ? r.json() : null).catch(() => null);
+        perfRiskPromise = fetch("/api/insights/performance-risk").then(r => r.ok ? r.json() : null).catch(() => null);
       } else if (baseData?.role === "STUDENT") {
         extraDataPromise = fetch("/api/notifications").then(r => r.ok ? r.json() : []);
       }
 
       const [attRisk, feeRisk, perfRisk, graphData, extraData] = await Promise.all([
-        fetch("/api/insights/attendance-risk").then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch("/api/insights/fee-defaulters").then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch("/api/insights/performance-risk").then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch("/api/dashboard/graphs").then(r => r.ok ? r.json() : null).catch(() => null),
+        attRiskPromise,
+        feeRiskPromise,
+        perfRiskPromise,
+        graphPromise,
         extraDataPromise
       ]);
 
@@ -62,7 +111,7 @@ export default function DashboardPage() {
       }
       if (perfRisk?.success && perfRisk.count > 0) {
          mappedInsights.testAlert = [{
-           batch_name: perfRisk.data[0].name + " & others underperforming",
+           section_name: perfRisk.data[0].name + " & others underperforming",
            drop_percentage: perfRisk.data[0].avgMarks
          }];
       }
@@ -96,10 +145,11 @@ export default function DashboardPage() {
     "Unpaid Dues": { bg: "bg-white", border: "border-gray-200", text: "text-red-600", label: "text-gray-500", iconBg: "bg-red-50", iconColor: "text-red-500" },
     "Present Today": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-blue-50", iconColor: "text-blue-600" },
     "Absent Today": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-amber-50", iconColor: "text-amber-600" },
-    "My Batches": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
+    "My Sections": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
     "My Students": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
     "Days Present": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
     "Total Classes": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-gray-100", iconColor: "text-gray-600" },
+    "My Subjects": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-indigo-50", iconColor: "text-indigo-600" },
   };
 
   const isAdmin = stats?.role === "ADMIN";
@@ -115,8 +165,9 @@ export default function DashboardPage() {
     isAdmin && stats.absentToday !== undefined && { label: "Absent Today", value: stats.absentToday || 0, icon: Users },
 
     // TEACHER ONLY stats
-    isTeacher && stats.batchesCount !== undefined && { label: "My Batches", value: stats.batchesCount, icon: LayoutDashboard },
+    isTeacher && stats.sectionsCount !== undefined && { label: "My Sections", value: stats.sectionsCount, icon: LayoutDashboard },
     isTeacher && stats.studentCount !== undefined && { label: "My Students", value: stats.studentCount, icon: Users },
+    isTeacher && stats.subjectNames !== undefined && { label: "My Subjects", value: stats.subjectNames, icon: BookOpen },
 
     // STUDENT ONLY stats
     isStudent && stats.pendingFees !== undefined && { label: "Unpaid Dues", value: `₹${(stats.pendingFees || 0).toLocaleString()}`, icon: FileText },
@@ -129,14 +180,21 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="page-title">
-            {stats?.role === "ADMIN" ? "Management Dashboard" : 
-             stats?.role === "TEACHER" ? "Faculty Portal" : 
-             "Student Dashboard"}
-          </h1>
-          <p className="page-subtitle">
+          <div className="flex items-center gap-3">
+            <h1 className="page-title">
+              {stats?.role === "ADMIN" ? "Management Dashboard" : 
+               stats?.role === "TEACHER" ? "Faculty Portal" : 
+               "Student Dashboard"}
+            </h1>
+            {isStudent && stats?.className && (
+              <span className="px-3 py-1 bg-slate-800 text-white text-xs font-black uppercase tracking-widest rounded-md shadow-sm">
+                {stats.className} - Section {stats.sectionName}
+              </span>
+            )}
+          </div>
+          <p className="page-subtitle mt-1">
             {stats?.role === "ADMIN" ? "Comprehensive institutional metrics and operational status." :
-             stats?.role === "TEACHER" ? "Track your batches, attendance, and student performance." :
+             stats?.role === "TEACHER" ? "Track your sections, attendance, and student performance." :
              "Overview of your academic progress and upcoming schedules."}
           </p>
         </div>
@@ -315,7 +373,7 @@ export default function DashboardPage() {
                   <div className="text-sm">
                     <p className="font-bold text-slate-900 mb-1 tracking-tight">Academic Performance</p>
                     <p className="text-slate-600 leading-relaxed">
-                      Performance deviation in <span className="font-bold text-slate-800">{insights.testAlert[0].batch_name}</span>. Average scores declined by {insights.testAlert[0].drop_percentage}%.
+                      Performance deviation in <span className="font-bold text-slate-800">{insights.testAlert[0].section_name}</span>. Average scores declined by {insights.testAlert[0].drop_percentage}%.
                     </p>
                   </div>
                 </div>
@@ -326,7 +384,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-sm">
                     <p className="font-bold text-slate-900 mb-1 tracking-tight">Academic Baseline</p>
-                    <p className="text-slate-500 leading-relaxed">Performance scores across all batches remain within expected statistical deviations.</p>
+                    <p className="text-slate-500 leading-relaxed">Performance scores across all sections remain within expected statistical deviations.</p>
                   </div>
                 </div>
               )}
@@ -343,7 +401,7 @@ export default function DashboardPage() {
                         <div key={i} className="flex justify-between items-center group">
                            <div className="min-w-0">
                               <p className="text-[13px] font-bold truncate group-hover:text-emerald-400 transition-colors tracking-tight">{tp.student_name}</p>
-                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5">{tp.batch_name}</p>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5">{tp.section_name}</p>
                            </div>
                            <div className="text-right shrink-0">
                               <div className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-[11px] font-black rounded-full border border-emerald-500/20 shadow-sm italic">
@@ -433,27 +491,56 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Test Performance */}
-          <div className="card p-6 border-slate-200">
-            <h3 className="section-heading mb-6 text-slate-800 font-bold pb-4 border-b border-slate-50">
-              <Target size={14} className="text-slate-400"/>
-              Comparative Academic Performance
-            </h3>
-            <div className="h-64 w-full relative min-h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={graphs.tests || []} layout="vertical" margin={{ left: 10, right: 30, top: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" horizontal={true} vertical={false} />
-                  <XAxis type="number" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fill: '#cbd5e1', fontWeight: 600 }} />
-                  <YAxis type="category" dataKey="name" fontSize={10} tickLine={false} axisLine={false} tickMargin={15} width={110} tick={{ fill: '#475569', fontWeight: 700 }} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: '700' }} />
-                  <Bar dataKey="avgScore" radius={[0, 6, 6, 0]} maxBarSize={22}>
-                    {(graphs.tests || []).map((entry, index) => (
-                      <Cell key={`bar-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} fillOpacity={0.9} />
-                    ))}
-                    <LabelList dataKey="avgScore" position="right" formatter={(v) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Academic Performance Over Time */}
+          <div className="card p-6 border-slate-200 col-span-1 lg:col-span-2 mt-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 pb-4 border-b border-slate-50 gap-4">
+              <h3 className="section-heading text-slate-800 font-bold m-0 w-auto">
+                <Target size={14} className="text-slate-400 inline-block mr-2" style={{ verticalAlign: 'middle' }}/>
+                Interactive Performance Analysis
+              </h3>
+              <div className="flex items-center gap-2 relative z-20">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Filter Class:</label>
+                <select 
+                  className="input-field !py-1.5 !px-3 !min-h-0 !text-sm !w-auto bg-slate-50 border-slate-200 font-semibold text-slate-700 shadow-sm cursor-pointer"
+                  value={testClassFilter}
+                  onChange={(e) => setTestClassFilter(e.target.value)}
+                >
+                  {testClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="w-full">
+              {/* By Section Bar Chart */}
+              <div>
+                <div style={{ height: Math.max(280, (filteredTests.length || 5) * 40) }} className="w-full relative mt-4">
+                  {filteredTests.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={filteredTests} layout="vertical" margin={{ left: -10, right: 35, top: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" horizontal={false} vertical={true} />
+                        <XAxis type="number" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fill: '#cbd5e1', fontWeight: 600 }} />
+                        <YAxis type="category" dataKey="name" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} width={110} tick={{ fill: '#475569', fontWeight: 600 }} formatter={(v) => testClassFilter !== 'All' ? v.split(' - ')[1] : v} />
+                        <Tooltip
+                          cursor={{ fill: '#f8fafc' }}
+                          contentStyle={{ borderRadius: '10px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '12px', fontWeight: '600' }}
+                          formatter={(v) => [`${v}%`, 'Avg Score']}
+                        />
+                        <Bar dataKey="avgScore" radius={[0, 5, 5, 0]} maxBarSize={20}>
+                          {filteredTests.map((entry, index) => (
+                            <Cell key={`bar-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} fillOpacity={0.85} />
+                          ))}
+                          <LabelList dataKey="avgScore" position="right" formatter={(v) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl border border-dashed border-slate-200 h-[280px]">
+                      <p className="text-sm font-medium text-slate-400">No data available for {testClassFilter !== 'All' ? `Class ${testClassFilter}` : 'any class'}.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
 

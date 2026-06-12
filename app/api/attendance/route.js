@@ -4,7 +4,7 @@ import { getAuthUser } from "@/lib/auth";
 import Attendance from "@/models/Attendance";
 import Student from "@/models/Student";
 import Teacher from "@/models/Teacher";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +15,13 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
-    const batch_id = searchParams.get("batch_id");
+    const section_id = searchParams.get("section_id");
+    const subject_id = searchParams.get("subject_id");
+    const period_no = searchParams.get("period_no");
 
     const query = { institute_id: authUser.institute_id };
+    if (subject_id) query.subject_id = subject_id;
+    if (period_no) query.period_no = Number(period_no);
     if (date) {
       const startDate = new Date(date);
       startDate.setUTCHours(0, 0, 0, 0);
@@ -33,19 +37,17 @@ export async function GET(req) {
       ).lean();
       if (!teacher) return NextResponse.json([], { status: 200 });
 
-      const batches = await Batch.find(
-        { teacher_id: teacher._id },
-        { _id: 1 }
-      ).lean();
-      const batchIds = batches.map((b) => b._id.toString());
+      const { default: TimetableEntry } = await import("@/models/TimetableEntry");
+      const timetables = await TimetableEntry.find({ teacher_id: teacher._id }, { section_id: 1 }).lean();
+      const sectionIds = [...new Set(timetables.map(t => t.section_id?.toString() || ""))].filter(Boolean);
 
-      if (batch_id && !batchIds.includes(batch_id)) {
+      if (section_id && !sectionIds.includes(section_id)) {
         return NextResponse.json(
-          { error: "Forbidden: Not your batch" },
+          { error: "Forbidden: Not your section" },
           { status: 403 }
         );
       }
-      query.batch_id = batch_id ? batch_id : { $in: batchIds };
+      query.section_id = section_id ? section_id : { $in: sectionIds };
     } else if (authUser.role === "STUDENT") {
       const student = await Student.findOne(
         { user_id: authUser._id },
@@ -54,12 +56,13 @@ export async function GET(req) {
       if (!student) return NextResponse.json([], { status: 200 });
       query.student_id = student._id;
     } else {
-      if (batch_id) query.batch_id = batch_id;
+      if (section_id) query.section_id = section_id;
     }
 
-    // Only fetch fields needed by the UI — no full document populate
+    // Only fetch fields needed by the UI
     const attendance = await Attendance.find(query)
-      .select("student_id batch_id date status")
+      .select("student_id section_id subject_id period_no date status")
+      .populate("subject_id", "name code")
       .lean();
 
     return NextResponse.json(attendance);

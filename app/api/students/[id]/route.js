@@ -11,7 +11,7 @@ export async function PUT(req, { params }) {
 
     const { id } = await params;
     const body = await req.json();
-    const { name, phoneOrEmail, batch_id, parent_name, parent_phone, admission_date } = body;
+    const { name, phoneOrEmail, section_id, parent_name, parent_phone, admission_date } = body;
 
     const student = await Student.findById(id);
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
@@ -22,7 +22,7 @@ export async function PUT(req, { params }) {
     }
 
     // Update the Student record
-    student.batch_id = batch_id;
+    student.section_id = section_id;
     student.parent_name = parent_name;
     student.parent_phone = parent_phone;
     if (admission_date) student.admission_date = new Date(admission_date);

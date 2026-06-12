@@ -46,9 +46,18 @@ if (typeof window !== "undefined" && !window.__fetch_patched) {
 export default function DashboardLayoutClient({ children, role, userName }) {
   const pathname = usePathname();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // ALWAYS start collapsed — will open on desktop after mount
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Fetch unread count
+  useEffect(() => {
+    fetch('/api/notifications/unread-count')
+      .then(r => r.json())
+      .then(d => { if (d.unread_count) setUnreadCount(d.unread_count); })
+      .catch(console.error);
+  }, []);
 
   // After hydration, open sidebar only on desktop
   useEffect(() => {
@@ -62,7 +71,7 @@ export default function DashboardLayoutClient({ children, role, userName }) {
     "/students": "Students",
     "/teachers": "Teachers",
     "/courses": "Courses",
-    "/batches": "Batches",
+    "/sections": "Sections",
     "/fees": "Fees",
     "/attendance": "Attendance",
     "/attendance-calendar": "Calendar",
@@ -129,10 +138,15 @@ export default function DashboardLayoutClient({ children, role, userName }) {
           <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsNotifOpen(true)}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 transition-colors border border-gray-200/80"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 transition-colors border border-gray-200/80 relative"
               >
-                <Bell size={15} strokeWidth={2} />
-                <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Alerts</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm animate-pulse flex items-center justify-center">
+                    NEW
+                  </span>
+                )}
+                <Bell size={15} strokeWidth={2} className={unreadCount > 0 ? "text-red-500" : ""} />
+                <span className={`text-[10px] font-bold uppercase tracking-wider hidden sm:inline ${unreadCount > 0 ? "text-red-600" : ""}`}>Alerts</span>
               </button>
             <div className="text-xs font-medium text-gray-400 hidden sm:block">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
@@ -146,7 +160,7 @@ export default function DashboardLayoutClient({ children, role, userName }) {
         </main>
 
         <AdminChatbot role={role} />
-        <NotificationPanel isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
+        <NotificationPanel isOpen={isNotifOpen} onClose={() => { setIsNotifOpen(false); setUnreadCount(0); }} />
       </div>
     </div>
   );

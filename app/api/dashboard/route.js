@@ -3,9 +3,10 @@ import dbConnect from "@/lib/db/mongodb";
 import { getAuthUser } from "@/lib/auth";
 import Student from "@/models/Student";
 import Teacher from "@/models/Teacher";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Fee from "@/models/Fee";
 import Attendance from "@/models/Attendance";
+import Class from "@/models/Class";
 
 export const dynamic = "force-dynamic";
 
@@ -97,37 +98,49 @@ export async function GET() {
     if (authUser.role === "TEACHER") {
       const teacher = await Teacher.findOne(
         { user_id: authUser._id },
-        { _id: 1 }
+        { _id: 1, subjects: 1 }
       ).lean();
       if (!teacher)
-        return NextResponse.json({ batchesCount: 0, studentCount: 0, role: "TEACHER" });
+        return NextResponse.json({ sectionsCount: 0, studentCount: 0, subjectsCount: 0, role: "TEACHER" });
 
-      const [batches, studentCount] = await Promise.all([
-        Batch.find({ teacher_id: teacher._id }, { _id: 1 }).lean(),
-        Student.countDocuments({ batch_id: { $in: [] } }), // filled below
-      ]);
+      const { default: TimetableEntry } = await import("@/models/TimetableEntry");
+      const timetables = await TimetableEntry.find({ teacher_id: teacher._id }, { section_id: 1 }).lean();
+      const sectionIds = [...new Set(timetables.map(t => t.section_id?.toString() || ""))].filter(Boolean);
 
-      const batchIds = batches.map((b) => b._id);
-      const sc = await Student.countDocuments({ batch_id: { $in: batchIds } });
+      const sc = await Student.countDocuments({ section_id: { $in: sectionIds } });
+
+      const { default: Subject } = await import("@/models/Subject");
+      const subjects = await Subject.find({ _id: { $in: teacher.subjects } }, { name: 1 }).lean();
+      const subjectNames = subjects.map(s => s.name).join(", ");
 
       return NextResponse.json({
-        batchesCount: batches.length,
+        sectionsCount: sectionIds.length,
         studentCount: sc,
+        subjectsCount: teacher.subjects?.length || 0,
+        subjectNames: subjectNames || "None",
         role: "TEACHER",
       });
     }
 
     if (authUser.role === "STUDENT") {
       const student = await Student.findOne(
-        { user_id: authUser._id },
-        { _id: 1 }
-      ).lean();
+        { user_id: authUser._id }
+      )
+        .populate({
+          path: "section_id",
+          select: "name class_id",
+          populate: { path: "class_id", select: "name" },
+        })
+        .lean();
+        
       if (!student)
         return NextResponse.json({
           pendingFees: 0,
           presentCount: 0,
           totalAttendanceDays: 0,
           role: "STUDENT",
+          className: "Unassigned",
+          sectionName: "Unassigned",
         });
 
       const [feeAgg, attAgg] = await Promise.all([
@@ -154,6 +167,8 @@ export async function GET() {
         presentCount: attAgg[0]?.present || 0,
         totalAttendanceDays: attAgg[0]?.total || 0,
         role: "STUDENT",
+        className: student.section_id?.class_id?.name || "Unassigned",
+        sectionName: student.section_id?.name || "Unassigned",
       });
     }
 

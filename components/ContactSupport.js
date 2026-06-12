@@ -33,7 +33,7 @@ export default function ContactSupport() {
           {/* Options */}
           <div className="p-4 space-y-3">
             <a
-              href="https://wa.me/919509728788?text=Hi%2C%20I%20need%20help%20with%20Alpha%20Coaching%20System"
+              href="https://wa.me/919509728788?text=Hi%2C%20I%20need%20help%20with%20Alpha%20School%20System"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100 hover:border-emerald-200 hover:shadow-sm transition-all group"
@@ -61,7 +61,7 @@ export default function ContactSupport() {
             </a>
 
             <a
-              href="mailto:support@alphacoaching.in"
+              href="mailto:support@alphaschool.in"
               className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 border border-violet-100 hover:border-violet-200 hover:shadow-sm transition-all group"
             >
               <div className="w-10 h-10 rounded-lg bg-violet-500 text-white flex items-center justify-center shrink-0">
@@ -69,14 +69,14 @@ export default function ContactSupport() {
               </div>
               <div>
                 <div className="text-sm font-bold text-gray-900 group-hover:text-violet-700 transition-colors">Email Us</div>
-                <div className="text-[11px] text-gray-500">support@alphacoaching.in</div>
+                <div className="text-[11px] text-gray-500">support@alphaschool.in</div>
               </div>
             </a>
           </div>
 
           {/* Footer */}
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-            <p className="text-[10px] text-gray-400 text-center font-medium">Alpha Coaching • Institute Management System</p>
+            <p className="text-[10px] text-gray-400 text-center font-medium">Alpha School • Institute Management System</p>
           </div>
         </div>
       )}

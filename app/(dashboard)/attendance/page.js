@@ -7,17 +7,20 @@ import toast from "react-hot-toast";
 const PAGE_SIZE = 15;
 
 export default function AttendancePage() {
-  const [batches, setBatches] = useState([]);
+  const [sections, setSections] = useState([]);
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
-  const [selectedBatch, setSelectedBatch] = useState("");
+  const [selectedSection, setSelectedSection] = useState("");
+  const [selectedSlotStr, setSelectedSlotStr] = useState("");
+  const [dailyTimetable, setDailyTimetable] = useState([]);
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const [date, setDate] = useState(todayStr);
 
   // Student specific state
   const [studentRecords, setStudentRecords] = useState([]);
-  const [studentSearchDate, setStudentSearchDate] = useState("");
+  const [studentTimetable, setStudentTimetable] = useState([]);
+  const [studentSearchDate, setStudentSearchDate] = useState(todayStr); // Defaults to today
   const [currentPage, setCurrentPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
@@ -25,19 +28,24 @@ export default function AttendancePage() {
   const [notifying, setNotifying] = useState(false);
   const [existingRecords, setExistingRecords] = useState([]);
   const [role, setRole] = useState("");
+  const [classes, setClasses] = useState([]);
+  const [filterClass, setFilterClass] = useState("");
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/batches", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/sections", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/me", { cache: "no-store" }).then((r) => r.json()),
-    ]).then(async ([b, m]) => {
+      fetch("/api/classes", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/subjects", { cache: "no-store" }).then((r) => r.json()),
+    ]).then(async ([b, m, c, sbj]) => {
       if (b.error) {
-        setBatches([]);
+        setSections([]);
       } else {
-        setBatches(Array.isArray(b) ? b : []);
+        setSections(Array.isArray(b) ? b : []);
       }
+      setClasses(Array.isArray(c) ? c : []);
+      setRole(m.role || "STUDENT");
       const userRole = m.role || "STUDENT";
-      setRole(userRole);
 
       if (userRole === "STUDENT") {
         try {
@@ -46,6 +54,9 @@ export default function AttendancePage() {
             (x, y) => new Date(y.date) - new Date(x.date)
           );
           setStudentRecords(sorted);
+          
+          const tRes = await fetch("/api/timetable", { cache: "no-store" }).then((r) => r.json());
+          setStudentTimetable(Array.isArray(tRes) ? tRes : []);
         } catch (e) {
           console.error(e);
         }
@@ -56,10 +67,26 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedBatch) return;
+    if (!selectedSection || !date) {
+      setDailyTimetable([]);
+      return;
+    }
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const [y, m, d] = date.split("-");
+    const dayStr = dayNames[new Date(y, m - 1, d).getDay()];
+    fetch(`/api/timetable?section_id=${selectedSection}&day=${dayStr}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => {
+        setDailyTimetable(Array.isArray(res) ? res : []);
+      });
+  }, [selectedSection, date]);
+
+  useEffect(() => {
+    if (!selectedSection || !selectedSlotStr) return;
+    const [subId, periodNo] = selectedSlotStr.split("_");
     Promise.all([
-      fetch(`/api/students?batch_id=${selectedBatch}`).then((r) => r.json()),
-      fetch(`/api/attendance?batch_id=${selectedBatch}&date=${date}`).then((r) => r.json()),
+      fetch(`/api/students?section_id=${selectedSection}`).then((r) => r.json()),
+      fetch(`/api/attendance?section_id=${selectedSection}&date=${date}&subject_id=${subId}&period_no=${periodNo}`).then((r) => r.json()),
     ]).then(([s, a]) => {
       setStudents(Array.isArray(s) ? s : []);
       setExistingRecords(Array.isArray(a) ? a : []);
@@ -72,7 +99,7 @@ export default function AttendancePage() {
       }
       setAttendance(map);
     });
-  }, [selectedBatch, date]);
+  }, [selectedSection, date, selectedSlotStr]);
 
   function toggle(studentId) {
     setAttendance((prev) => {
@@ -86,12 +113,18 @@ export default function AttendancePage() {
   }
 
   async function markAll() {
+    if (!selectedSection) return toast.error("Select a batch!");
+    if (!selectedSlotStr) return toast.error("❌ Mandatory: You must select the specific lecture slot!");
+    
     setSaving(true);
     try {
+      const [subId, periodNo] = selectedSlotStr.split("_");
       const records = students
         .map((student) => ({
           student_id: student._id,
-          batch_id: selectedBatch,
+          section_id: selectedSection,
+          subject_id: subId,
+          period_no: Number(periodNo),
           date,
           status: attendance[student._id] || "NOT_TAKEN",
         }))
@@ -124,10 +157,11 @@ export default function AttendancePage() {
   async function notifyAbsentees() {
     setNotifying(true);
     try {
+      const [subId, periodNo] = selectedSlotStr.split("_");
       const res = await fetch("/api/attendance/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch_id: selectedBatch, date }),
+        body: JSON.stringify({ section_id: selectedSection, subject_id: subId, period_no: Number(periodNo), date }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -140,6 +174,33 @@ export default function AttendancePage() {
     }
     setNotifying(false);
   }
+
+  async function notifyAbsenteesBulk() {
+    if (!confirm("Are you sure you want to send absent notifications to ALL parents of ALL batches for this date?")) return;
+    setNotifying(true);
+    try {
+      const res = await fetch("/api/attendance/notify/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "Master notifications sent!");
+      } else {
+        toast.error(data.error || "Failed to notify.");
+      }
+    } catch {
+      toast.error("Network error.");
+    }
+    setNotifying(false);
+  }
+
+  const [subjects, setSubjects] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/subjects').then(r=>r.json()).then(d=>setSubjects(Array.isArray(d)?d:[]));
+  },[]);
 
   if (loading) {
     return (
@@ -156,16 +217,20 @@ export default function AttendancePage() {
     const totalDays = studentRecords.length;
     const presentDays = studentRecords.filter((r) => r.status === "PRESENT").length;
     const absentDays = studentRecords.filter((r) => r.status === "ABSENT").length;
-    const pct = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : "0.0";
+    const pct = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : "100.0";
     const isGood = parseFloat(pct) >= 75;
 
-    const filtered = studentSearchDate
-      ? studentRecords.filter((r) => r.date.startsWith(studentSearchDate))
-      : studentRecords;
+    // Determine the Day of the Week for the selected date
+    const targetDateObj = new Date(studentSearchDate);
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const targetDayName = dayNames[targetDateObj.getDay()];
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-    const safePage = Math.min(currentPage, totalPages);
-    const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    // Get timetable for the selected day, ordered by period_no
+    const dayTimetable = studentTimetable.filter(t => t.day === targetDayName).sort((a,b) => a.period_no - b.period_no);
+
+    // Get attendance records for this specific DATE exactly
+    // Date from DB usually looks like "2026-04-15T00:00:00.000Z"
+    const todayRecords = studentRecords.filter((r) => r.date.startsWith(studentSearchDate));
 
     return (
       <div className="max-w-5xl mx-auto space-y-6">
@@ -198,14 +263,14 @@ export default function AttendancePage() {
           <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Present</span>
             <div className="text-3xl font-black text-emerald-700 mt-2">{presentDays}</div>
-            <span className="text-xs font-medium text-emerald-600 mt-1">days attended</span>
+            <span className="text-xs font-medium text-emerald-600 mt-1">lectures attended</span>
           </div>
 
           {/* Absent */}
           <div className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
             <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Absent</span>
             <div className="text-3xl font-black text-red-600 mt-2">{absentDays}</div>
-            <span className="text-xs font-medium text-red-500 mt-1">out of {totalDays} days</span>
+            <span className="text-xs font-medium text-red-500 mt-1">out of {totalDays} lectures</span>
           </div>
         </div>
 
@@ -214,122 +279,71 @@ export default function AttendancePage() {
           {/* Card header with search */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50/60">
             <div>
-              <h2 className="text-sm font-bold text-gray-800 tracking-tight">Attendance Log</h2>
-              <p className="text-xs text-gray-400 mt-0.5">{filtered.length} records{studentSearchDate ? " matching your search" : ""}</p>
+              <h2 className="text-sm font-bold text-gray-800 tracking-tight">Today's Schedule & Attendance</h2>
+              <p className="text-xs text-gray-400 mt-0.5">{targetDayName}</p>
             </div>
             <div className="relative">
               <CalendarIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 type="date"
                 value={studentSearchDate}
-                onChange={(e) => { setStudentSearchDate(e.target.value); setCurrentPage(1); }}
+                onChange={(e) => setStudentSearchDate(e.target.value)}
                 className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-all w-full sm:w-auto"
               />
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/30">
-                  <th className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">#</th>
-                  <th className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Date</th>
-                  <th className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Batch</th>
-                  <th className="text-right px-5 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {paginated.map((rec, idx) => {
-                  const isPresent = rec.status === "PRESENT";
-                  const isAbsent = rec.status === "ABSENT";
-                  const rowNum = (safePage - 1) * PAGE_SIZE + idx + 1;
-                  return (
-                    <tr key={rec._id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-5 py-3.5 text-xs font-mono text-gray-300">{rowNum}</td>
-                      <td className="px-5 py-3.5">
-                        <span className="font-semibold text-gray-800">
-                          {new Date(rec.date).toLocaleDateString("en-IN", {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-gray-500 text-xs font-medium">
-                        {batches.find((b) => b._id === rec.batch_id)?.name || "—"}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide border ${
-                          isPresent
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : isAbsent
-                            ? "bg-red-50 text-red-600 border-red-200"
-                            : "bg-gray-50 text-gray-500 border-gray-200"
-                        }`}>
-                          {isPresent ? <CheckCircle2 size={11} /> : isAbsent ? <XCircle size={11} /> : null}
-                          {rec.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {paginated.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="text-center py-16 text-gray-400">
-                      <CalendarIcon size={28} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-sm font-semibold">
-                        {studentSearchDate ? "No records for this date." : "No attendance recorded yet."}
-                      </p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <div className="p-5">
+            {dayTimetable.length === 0 ? (
+               <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-2">
+                 <CalendarIcon size={28} className="mx-auto mb-3 text-gray-200" />
+                 <p className="text-sm font-semibold">
+                   No classes scheduled for {targetDayName}.
+                 </p>
+               </div>
+            ) : (
+               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                 {dayTimetable.map(period => {
+                    // Try to find if attendance exists for this subject specifically
+                    // It's possible the attendance doesn't have subject_id (marked as All Subjects)
+                    // Try to find if attendance exists for exactly this subject and period
+                    const exactAtt = todayRecords.find(r => r.subject_id?._id === period.subject_id?._id && r.period_no === period.period_no);
+                    const allSubjectAtt = todayRecords.find(r => !r.subject_id);
+                    
+                    const attRecord = exactAtt || allSubjectAtt;
+                    const status = attRecord ? attRecord.status : "NOT_MARKED";
 
-          {/* Pagination footer */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/40">
-              <span className="text-xs text-gray-400 font-medium">
-                Page {safePage} of {totalPages} &mdash; {filtered.length} total
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={safePage === 1}
-                  className="p-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
-                  const pg = start + i;
-                  return (
-                    <button
-                      key={pg}
-                      onClick={() => setCurrentPage(pg)}
-                      className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
-                        pg === safePage
-                          ? "bg-slate-800 text-white shadow-sm"
-                          : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {pg}
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={safePage === totalPages}
-                  className="p-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronRight size={15} />
-                </button>
-              </div>
-            </div>
-          )}
+                    return (
+                        <div key={period._id} className="relative overflow-hidden group border border-gray-100 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                            <div className={`h-1.5 w-full absolute top-0 left-0 ${status === 'PRESENT' ? 'bg-emerald-400' : status === 'ABSENT' ? 'bg-red-500' : 'bg-gray-200'}`}></div>
+                            <div className="p-4 pt-5">
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-[10px] font-black text-gray-400 tracking-widest uppercase">
+                                        Period {period.period_no}
+                                    </span>
+                                    {status === 'PRESENT' ? (
+                                        <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                            <CheckCircle2 size={10} /> Present
+                                        </span>
+                                    ) : status === 'ABSENT' ? (
+                                        <span className="bg-red-50 text-red-600 border border-red-100 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                            <XCircle size={10} /> Absent
+                                        </span>
+                                    ) : (
+                                        <span className="bg-gray-50 text-gray-400 border border-gray-100 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                            Awaiting
+                                        </span>
+                                    )}
+                                </div>
+                                <h3 className="text-sm font-bold text-gray-800 line-clamp-1">{period.subject_id?.name || "Subject"}</h3>
+                                <p className="text-xs font-semibold text-gray-500 mt-1 truncate">{period.teacher_id?.user_id?.name || "Teacher"}</p>
+                            </div>
+                        </div>
+                    )
+                 })}
+               </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -338,44 +352,76 @@ export default function AttendancePage() {
   /* ───────────────── ADMIN / TEACHER VIEW ───────────────── */
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="page-title">{role === "ADMIN" ? "Attendance Management" : "Daily Attendance"}</h1>
-        <p className="page-subtitle">
-          {role === "ADMIN" 
-            ? "Monitor and verify student presence across all batches." 
-            : "Mark presence for your assigned batch and notify absentees."}
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="page-title">{role === "ADMIN" ? "Attendance Management" : "Daily Attendance"}</h1>
+          <p className="page-subtitle">
+            {role === "ADMIN" 
+              ? "Monitor and verify student presence across all sections." 
+              : "Mark presence for your assigned section and notify absentees."}
+          </p>
+        </div>
+        {role === "ADMIN" && (
+          <button 
+            onClick={notifyAbsenteesBulk} 
+            disabled={notifying}
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-lg hover:shadow-red-500/30 transition-all border border-red-500 mt-4 md:mt-0"
+          >
+            <AlertCircle size={16} />
+            {notifying ? "Notifying..." : "Master Notify (All Batches)"}
+          </button>
+        )}
       </div>
 
       <div className="card">
         <div className="flex flex-wrap gap-4 items-end">
+          {role === "ADMIN" && (
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">1. Select Class</label>
+              <select value={filterClass} onChange={(e) => { setFilterClass(e.target.value); setSelectedSection(""); }} className="input-field text-sm">
+                <option value="">All Classes</option>
+                {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Select Batch</label>
-            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="input-field">
-              <option value="">— Choose a Batch —</option>
-              {batches.map((b) => (
-                <option key={b._id} value={b._id}>{b.name}</option>
-              ))}
+             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">2. Select Section</label>
+             <select value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="input-field text-sm" disabled={role === "ADMIN" && !filterClass}>
+               <option value="">— Choose a Section —</option>
+               {sections.filter(b => role !== "ADMIN" || !filterClass || (b.class_id?._id || b.class_id) === filterClass).map((b) => (
+                 <option key={b._id} value={b._id}>{b.class_id?.name || "Class"} - Sec {b.name}</option>
+               ))}
+             </select>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">3. Select Timetable Slot</label>
+            <select value={selectedSlotStr} onChange={(e) => setSelectedSlotStr(e.target.value)} className="input-field text-sm" disabled={!selectedSection || dailyTimetable.length === 0}>
+              <option value="">{dailyTimetable.length === 0 ? "— No lectures today —" : "— Select Lecture Slot —"}</option>
+              {dailyTimetable.map((slot) => (
+                <option key={slot._id} value={`${slot.subject_id?._id}_${slot.period_no}`}>
+                  Period {slot.period_no}: {slot.subject_id?.name || "Subject"}
+                </option>
+               ))}
             </select>
           </div>
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-field" />
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-field text-sm" />
           </div>
         </div>
       </div>
 
-      {!selectedBatch && (
-        <div className="card py-16 text-center border-dashed border-gray-200">
+      {(!selectedSection || !selectedSlotStr) && (
+        <div className="card py-16 text-center border-dashed border-gray-200 relative overflow-hidden">
           <div className="w-14 h-14 mx-auto bg-gray-100 rounded-lg flex items-center justify-center text-gray-300 mb-3">
             <CalendarCheck size={32} />
           </div>
-          <h3 className="text-base font-bold text-gray-700">Select a batch to continue</h3>
-          <p className="text-sm text-gray-500 mt-1">Choose a batch and date above to mark attendance.</p>
+          <h3 className="text-base font-bold text-gray-700">Lecture Configuration Incomplete</h3>
+          <p className="text-sm text-gray-500 mt-1">Please explicitly select a Section and the specific Subject lecture to load the marking register.</p>
         </div>
       )}
 
-      {selectedBatch && students.length > 0 && (
+      {selectedSection && selectedSlotStr && students.length > 0 && (
         <div className="card !p-0">
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -427,13 +473,13 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {selectedBatch && students.length === 0 && (
+      {selectedSection && students.length === 0 && (
         <div className="card py-16 text-center border-dashed border-gray-200">
           <div className="w-14 h-14 mx-auto bg-gray-100 rounded-lg flex items-center justify-center text-gray-300 mb-3">
             <Users size={32} />
           </div>
           <h3 className="text-base font-bold text-gray-700">No students found</h3>
-          <p className="text-sm text-gray-500 mt-1">No students enrolled in this batch yet.</p>
+          <p className="text-sm text-gray-500 mt-1">No students enrolled in this section yet.</p>
         </div>
       )}
     </div>

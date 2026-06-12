@@ -4,7 +4,7 @@ import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import Student from "@/models/Student";
 import User from "@/models/User";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Fee from "@/models/Fee";
 
 export async function POST(req) {
@@ -29,11 +29,11 @@ export async function POST(req) {
     // Skip header row
     const dataRows = rows.slice(1);
 
-    // Fetch all batches to map by name
-    const batches = await Batch.find({ institute_id: authUser.institute_id });
-    const batchMap = {};
-    batches.forEach(b => {
-      batchMap[b.name.toLowerCase()] = b._id;
+    // Fetch all sections to map by name
+    const sections = await Section.find({ institute_id: authUser.institute_id });
+    const sectionMap = {};
+    sections.forEach(b => {
+      sectionMap[b.name.toLowerCase()] = b._id;
     });
 
     let imported = 0;
@@ -45,10 +45,10 @@ export async function POST(req) {
       const rowNum = i + 2; // +1 for 0-index, +1 for header
       const cols = dataRows[i].split(",").map(c => c.trim().replace(/^"|"$/g, ''));
       
-      const [name, parent_phone, batch_name, admission_date_raw, total_fee] = cols;
+      const [name, parent_phone, section_name, admission_date_raw, total_fee] = cols;
 
-      if (!name || !parent_phone || !batch_name) {
-        errors.push(`Row ${rowNum}: Missing required fields (Name, Phone, or Batch Name)`);
+      if (!name || !parent_phone || !section_name) {
+        errors.push(`Row ${rowNum}: Missing required fields (Name, Phone, or Section Name)`);
         failed++;
         continue;
       }
@@ -61,14 +61,14 @@ export async function POST(req) {
         continue;
       }
 
-      let bId = batchMap[batch_name.toLowerCase()];
+      let bId = sectionMap[section_name.toLowerCase()];
       if (!bId) {
-        const newBatch = await Batch.create({
-           name: batch_name,
+        const newSection = await Section.create({
+           name: section_name,
            institute_id: authUser.institute_id
         });
-        bId = newBatch._id;
-        batchMap[batch_name.toLowerCase()] = bId;
+        bId = newSection._id;
+        sectionMap[section_name.toLowerCase()] = bId;
       }
 
       // Check duplicate student by phone
@@ -100,7 +100,7 @@ export async function POST(req) {
 
         const student = await Student.create({
           user_id: user._id,
-          batch_id: bId,
+          section_id: bId,
           parent_name: "Parent of " + name, // Since format only gives phone, we infer parent name or use student name
           parent_phone,
           admission_date,

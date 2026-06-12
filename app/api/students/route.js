@@ -4,7 +4,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import Student from "@/models/Student";
 import User from "@/models/User";
 import Teacher from "@/models/Teacher";
-import Batch from "@/models/Batch";
+import Section from "@/models/Section";
 import Fee from "@/models/Fee";
 import Attendance from "@/models/Attendance";
 import Result from "@/models/Result";
@@ -17,7 +17,7 @@ export async function GET(req) {
     const authUser = await getAuthUser();
 
     const { searchParams } = new URL(req.url);
-    const batch_id = searchParams.get("batch_id");
+    const section_id = searchParams.get("section_id");
     const risk = searchParams.get("risk");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
     const limit = Math.min(200, parseInt(searchParams.get("limit") || "150"));
@@ -33,20 +33,18 @@ export async function GET(req) {
       ).lean();
       if (!teacher) return NextResponse.json([]);
 
-      const batches = await Batch.find(
-        { teacher_id: teacher._id },
-        { _id: 1 }
-      ).lean();
-      const batchIds = batches.map((b) => b._id.toString());
+      const { default: TimetableEntry } = await import("@/models/TimetableEntry");
+      const timetables = await TimetableEntry.find({ teacher_id: teacher._id }, { section_id: 1 }).lean();
+      const sectionIds = [...new Set(timetables.map(t => t.section_id?.toString() || ""))].filter(Boolean);
 
-      if (batch_id && !batchIds.includes(batch_id)) {
-        return NextResponse.json({ error: "Forbidden: Not your batch" }, { status: 403 });
+      if (section_id && !sectionIds.includes(section_id)) {
+        return NextResponse.json({ error: "Forbidden: Not your section" }, { status: 403 });
       }
-      query.batch_id = batch_id ? batch_id : { $in: batchIds };
+      query.section_id = section_id ? section_id : { $in: sectionIds };
     } else if (authUser.role === "STUDENT") {
       query.user_id = authUser._id;
     } else {
-      if (batch_id) query.batch_id = batch_id;
+      if (section_id) query.section_id = section_id;
     }
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -128,9 +126,14 @@ export async function GET(req) {
 
     // ── Fetch paginated students ──
     const students = await Student.find(query)
-      .select("user_id batch_id parent_name parent_phone admission_date institute_id")
+      .select("user_id section_id parent_name parent_phone admission_date institute_id")
       .populate("user_id", "name phoneOrEmail")
-      .populate("batch_id", "name")
+      .populate({
+        path: "section_id",
+        select: "name class_id",
+        populate: { path: "class_id", select: "name" },
+      })
+      .sort({ section_id: 1 })
       .skip(skip)
       .limit(limit)
       .lean();
@@ -226,7 +229,7 @@ export async function POST(req) {
     const {
       name,
       phoneOrEmail,
-      batch_id,
+      section_id,
       parent_name,
       parent_phone,
       admission_date,
@@ -234,18 +237,26 @@ export async function POST(req) {
       due_date,
     } = body;
 
-    const [user] = await Promise.all([
-      User.create({
+    const trimmedPhoneOrEmail = phoneOrEmail.trim();
+    // Check if user already exists
+    let user = await User.findOne({ phoneOrEmail: new RegExp(`^${trimmedPhoneOrEmail}$`, "i") });
+    if (user) {
+      if (user.role !== "STUDENT" && user.role !== "ADMIN" && user.role !== "TEACHER") {
+        user.role = "STUDENT";
+        await user.save();
+      }
+    } else {
+      user = await User.create({
         name,
-        phoneOrEmail,
+        phoneOrEmail: trimmedPhoneOrEmail,
         role: "STUDENT",
         institute_id: authUser.institute_id,
-      }),
-    ]);
+      });
+    }
 
     const student = await Student.create({
       user_id: user._id,
-      batch_id,
+      section_id,
       parent_name,
       parent_phone,
       admission_date: admission_date ? new Date(admission_date) : new Date(),
