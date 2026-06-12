@@ -44,27 +44,27 @@ export async function POST(req) {
     const t2 = await Teacher.create({ user_id: t2User._id, institute_id: iid });
 
     // 2. Classes & Courses
-    const classJEE = await Class.create({ name: "Class 11", institute_id: iid });
-    const classNEET = await Class.create({ name: "Class 12", institute_id: iid });
-    const courseJEE = await Course.create({ name: "JEE Advanced", institute_id: iid });
-    const courseNEET = await Course.create({ name: "NEET Medical", institute_id: iid });
+    const class11 = await Class.create({ name: "Class 11", institute_id: iid });
+    const class12 = await Class.create({ name: "Class 12", institute_id: iid });
+    const courseScience = await Course.create({ name: "Science", institute_id: iid });
+    const courseCommerce = await Course.create({ name: "Commerce", institute_id: iid });
 
     // 3. Sections
-    const sectionJEE = await Section.create({ name: "JEE Top Section", class_id: classJEE._id, teacher_id: t1._id, timing: "8:00 AM - 10:00 AM", institute_id: iid });
-    const sectionNEET = await Section.create({ name: "NEET Morning", class_id: classNEET._id, teacher_id: t2._id, timing: "10:00 AM - 12:00 PM", institute_id: iid });
+    const section11A = await Section.create({ name: "Section A", class_id: class11._id, teacher_id: t1._id, timing: "8:00 AM - 10:00 AM", institute_id: iid });
+    const section12A = await Section.create({ name: "Section A", class_id: class12._id, teacher_id: t2._id, timing: "10:00 AM - 12:00 PM", institute_id: iid });
 
     // 4. Students (Exactly 10)
     const studentData = [
-      { name: "Victor Camper", phone: "campervictor52@gmail.com", parent: "Mr. Camper", parentPhone: "+911000000001", section: sectionJEE._id },
-      { name: "Kavya Singh", phone: "kavya@test.com", parent: "Vikram Singh", parentPhone: "+911000000002", section: sectionJEE._id },
-      { name: "Vihaan Iyer", phone: "vihaan@test.com", parent: "Rajesh Iyer", parentPhone: "+911000000003", section: sectionJEE._id },
-      { name: "Ananya Sharma", phone: "ananya@test.com", parent: "Deepak Sharma", parentPhone: "+911000000004", section: sectionJEE._id },
-      { name: "Kabir Dubey", phone: "kabir@test.com", parent: "Amit Dubey", parentPhone: "+911000000005", section: sectionJEE._id },
-      { name: "Mira Patel", phone: "mira@test.com", parent: "Suresh Patel", parentPhone: "+911000000006", section: sectionNEET._id },
-      { name: "Vivaan Joshi", phone: "vivaan@test.com", parent: "Karan Joshi", parentPhone: "+911000000007", section: sectionNEET._id },
-      { name: "Sia Gupta", phone: "sia@test.com", parent: "Ravi Gupta", parentPhone: "+911000000008", section: sectionNEET._id },
-      { name: "Reyansh Reddy", phone: "reyansh@test.com", parent: "Raman Reddy", parentPhone: "+911000000009", section: sectionNEET._id },
-      { name: "Zara Khan", phone: "zara@test.com", parent: "Imran Khan", parentPhone: "+911000000010", section: sectionNEET._id }
+      { name: "Victor Camper", phone: "campervictor52@gmail.com", parent: "Mr. Camper", parentPhone: "+911000000001", section: section11A._id },
+      { name: "Kavya Singh", phone: "kavya@test.com", parent: "Vikram Singh", parentPhone: "+911000000002", section: section11A._id },
+      { name: "Vihaan Iyer", phone: "vihaan@test.com", parent: "Rajesh Iyer", parentPhone: "+911000000003", section: section11A._id },
+      { name: "Ananya Sharma", phone: "ananya@test.com", parent: "Deepak Sharma", parentPhone: "+911000000004", section: section11A._id },
+      { name: "Kabir Dubey", phone: "kabir@test.com", parent: "Amit Dubey", parentPhone: "+911000000005", section: section11A._id },
+      { name: "Mira Patel", phone: "mira@test.com", parent: "Suresh Patel", parentPhone: "+911000000006", section: section12A._id },
+      { name: "Vivaan Joshi", phone: "vivaan@test.com", parent: "Karan Joshi", parentPhone: "+911000000007", section: section12A._id },
+      { name: "Sia Gupta", phone: "sia@test.com", parent: "Ravi Gupta", parentPhone: "+911000000008", section: section12A._id },
+      { name: "Reyansh Reddy", phone: "reyansh@test.com", parent: "Raman Reddy", parentPhone: "+911000000009", section: section12A._id },
+      { name: "Zara Khan", phone: "zara@test.com", parent: "Imran Khan", parentPhone: "+911000000010", section: section12A._id }
     ];
 
     const students = [];
@@ -153,9 +153,9 @@ export async function POST(req) {
     }
 
     // 7. Tests & Results
-    const testJEE = await Test.create({ 
-      name: "JEE Mock Test 1", 
-      section_id: sectionJEE._id, 
+    const test11 = await Test.create({ 
+      name: "Mock Test 1", 
+      section_id: section11A._id, 
       date: new Date(), 
       subjects: [
         { name: "Physics", max_marks: 100 },
@@ -165,34 +165,30 @@ export async function POST(req) {
       institute_id: iid 
     });
 
-    const testNEET = await Test.create({ 
-      name: "NEET Mock Test 1", 
-      section_id: sectionNEET._id, 
+    const test12 = await Test.create({ 
+      name: "Mock Test 1", 
+      section_id: section12A._id, 
       date: new Date(), 
       subjects: [
-        { name: "Physics", max_marks: 180 },
-        { name: "Chemistry", max_marks: 180 },
-        { name: "Bio", max_marks: 360 }
+        { name: "Physics", max_marks: 100 },
+        { name: "Chemistry", max_marks: 100 },
+        { name: "Maths", max_marks: 100 }
       ],
       institute_id: iid 
     });
 
     for (let i = 0; i < students.length; i++) {
       const student = students[i];
-      const isJEE = student.section_id.toString() === sectionJEE._id.toString();
+      const isClass11 = student.section_id.toString() === section11A._id.toString();
       
-      const subject_marks = isJEE ? [
+      const subject_marks = [
         { subject: "Physics", marks: Math.floor(Math.random() * 80 + 20) },
         { subject: "Chemistry", marks: Math.floor(Math.random() * 80 + 20) },
         { subject: "Maths", marks: Math.floor(Math.random() * 80 + 20) }
-      ] : [
-        { subject: "Physics", marks: Math.floor(Math.random() * 140 + 40) },
-        { subject: "Chemistry", marks: Math.floor(Math.random() * 140 + 40) },
-        { subject: "Bio", marks: Math.floor(Math.random() * 300 + 60) }
       ];
       
       await Result.create({ 
-        test_id: isJEE ? testJEE._id : testNEET._id, 
+        test_id: isClass11 ? test11._id : test12._id, 
         student_id: student._id, 
         subject_marks,
         institute_id: iid 

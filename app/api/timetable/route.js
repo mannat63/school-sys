@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db/mongodb";
 import { getAuthUser } from "@/lib/auth";
 import TimetableEntry from "@/models/TimetableEntry";
+import "@/models/Class";
+import "@/models/Section";
+import "@/models/Subject";
+import "@/models/Teacher";
+import "@/models/User";
 
 export const dynamic = "force-dynamic";
 

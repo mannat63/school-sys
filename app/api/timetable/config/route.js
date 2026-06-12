@@ -3,6 +3,8 @@ import dbConnect from "@/lib/db/mongodb";
 import { getAuthUser } from "@/lib/auth";
 import Settings from "@/models/Settings";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     await dbConnect();

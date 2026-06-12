@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db/mongodb";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import Teacher from "@/models/Teacher";
 import User from "@/models/User";
+import "@/models/Subject";
 
 export const dynamic = "force-dynamic";
 
