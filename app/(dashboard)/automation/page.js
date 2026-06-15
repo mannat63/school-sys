@@ -205,6 +205,37 @@ export default function AutomationPage() {
         </div>
       </div>
 
+      {/* ── Recycle Bin ── */}
+      <div className="card border border-orange-100 bg-orange-50/20">
+        <div className="flex items-start gap-4 mb-4">
+          <div className="p-2.5 bg-orange-100 text-orange-600 rounded-md flex-shrink-0">
+            <AlertTriangle size={20} strokeWidth={1.8} />
+          </div>
+          <div>
+            <div className="font-semibold text-gray-800">Recycle Bin</div>
+            <div className="text-sm text-gray-500 mt-0.5">Deleted teachers, classes, and sections are kept here. Emptying the bin permanently removes them.</div>
+          </div>
+        </div>
+        <div className="pl-16">
+          <button
+            onClick={async () => {
+              if (confirm("Are you sure you want to permanently empty the recycle bin?")) {
+                const id = toast.loading("Emptying recycle bin…");
+                try {
+                  const res = await fetch("/api/recycle-bin", { method: "DELETE" });
+                  const data = await res.json();
+                  if (res.ok) { toast.success("Recycle Bin emptied!", { id }); }
+                  else toast.error(data.error || "Failed to empty bin", { id });
+                } catch { toast.error("Network error", { id }); }
+              }
+            }}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-md shadow-sm transition-colors flex items-center gap-2"
+          >
+            <AlertTriangle size={13} /> Empty Recycle Bin
+          </button>
+        </div>
+      </div>
+
       {/* ── Danger Zone ── */}
       <div className="card border border-red-100 bg-red-50/20">
         <div className="flex items-start gap-4 mb-4">

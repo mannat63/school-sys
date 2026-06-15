@@ -60,7 +60,10 @@ export async function POST(req) {
     const authUser = await requireRole(["ADMIN"]);
 
     const body = await req.json();
-    const { name, class_id } = body;
+    const existingSection = await Section.findOne({ name, class_id, institute_id: authUser.institute_id });
+    if (existingSection) {
+      return NextResponse.json({ error: "A section with this name already exists in this class." }, { status: 400 });
+    }
 
     const section = await Section.create({
       name,

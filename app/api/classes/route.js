@@ -25,6 +25,11 @@ export async function POST(req) {
     await dbConnect();
     const authUser = await requireRole(["ADMIN"]);
     const data = await req.json();
+    const existingClass = await Class.findOne({ name: data.name, institute_id: authUser.institute_id });
+    if (existingClass) {
+      return NextResponse.json({ error: "A class with this name already exists." }, { status: 400 });
+    }
+
     data.institute_id = authUser.institute_id;
     const newClass = await Class.create(data);
     return NextResponse.json(newClass, { status: 201 });

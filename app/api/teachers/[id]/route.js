@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import Teacher from "@/models/Teacher";
 import User from "@/models/User";
+import RecycleBin from "@/models/RecycleBin";
 import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,10 @@ export async function PUT(req, { params }) {
     const { id } = await params;
     const body = await req.json();
     const { name, email, phone, phoneOrEmail, subjects } = body;
-    // Support both old (phoneOrEmail) and new (email+phone) formats
+    if (phone && !/^\+91 \d{10}$/.test(phone)) {
+      return NextResponse.json({ error: "Phone number must be exactly 10 digits prefixed with +91 (e.g., +91 9876543210)" }, { status: 400 });
+    }
+
     const finalContact = email?.trim() ? email.trim() : phone?.trim() ? phone.trim() : phoneOrEmail;
 
     console.log(`Teacher Update Request: ID=${id}, Institute=${authUser.institute_id}`);
@@ -33,7 +37,7 @@ export async function PUT(req, { params }) {
     }
 
     // Now update the linked user
-    await User.findByIdAndUpdate(teacher.user_id, { name, phoneOrEmail: finalContact });
+    await User.findByIdAndUpdate(teacher.user_id, { name, phoneOrEmail: finalContact, phone });
     if (subjects) {
       teacher.subjects = subjects;
       await teacher.save();
@@ -51,9 +55,26 @@ export async function DELETE(req, { params }) {
     await dbConnect();
     const authUser = await requireRole(["ADMIN"]);
     const { id } = await params;
-    const teacher = await Teacher.findOneAndDelete({ _id: id, institute_id: authUser.institute_id });
+    const teacher = await Teacher.findOne({ _id: id, institute_id: authUser.institute_id });
     if (!teacher) return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
-    await User.findByIdAndDelete(teacher.user_id);
+    
+    const user = await User.findById(teacher.user_id);
+    
+    // Save to Recycle Bin
+    await RecycleBin.create({
+      original_collection: "Teacher",
+      original_id: teacher._id,
+      institute_id: authUser.institute_id,
+      data: {
+        teacher: teacher.toObject(),
+        user: user ? user.toObject() : null
+      },
+      deleted_by: authUser._id
+    });
+
+    await Teacher.deleteOne({ _id: id });
+    if (user) await User.deleteOne({ _id: user._id });
+    
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

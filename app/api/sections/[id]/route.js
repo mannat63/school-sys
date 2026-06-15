@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db/mongodb";
 import { requireRole } from "@/lib/auth";
 import Section from "@/models/Section";
+import RecycleBin from "@/models/RecycleBin";
 
 export async function PUT(req, { params }) {
   try {
@@ -38,8 +39,18 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ error: "Cannot delete section with active students" }, { status: 400 });
     }
 
-    const section = await Section.findOneAndDelete({ _id: id, institute_id: authUser.institute_id });
+    const section = await Section.findOne({ _id: id, institute_id: authUser.institute_id });
     if (!section) return NextResponse.json({ error: "Section not found" }, { status: 404 });
+    
+    await RecycleBin.create({
+      original_collection: "Section",
+      original_id: section._id,
+      institute_id: section.institute_id,
+      data: section.toObject(),
+      deleted_by: authUser._id
+    });
+
+    await Section.deleteOne({ _id: id });
     
     // Cleanup related data like Attendance and Tests (Results cascade deleted if we delete Tests)
     const { default: Attendance } = await import("@/models/Attendance");

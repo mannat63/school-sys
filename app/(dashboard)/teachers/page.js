@@ -176,8 +176,10 @@ export default function TeachersPage() {
               Phone Number
             </label>
             <input
-              placeholder="Phone Number"
+              placeholder="+91 9876543210"
               required
+              pattern="^\+91 \d{10}$"
+              title="Must start with +91 followed by exactly 10 digits"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               className="input-field"
@@ -242,7 +244,9 @@ export default function TeachersPage() {
                   />
                   <input
                     required
-                    placeholder="Phone"
+                    placeholder="+91 9876543210"
+                    pattern="^\+91 \d{10}$"
+                    title="Must start with +91 followed by exactly 10 digits"
                     value={editForm.phone}
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                     className="input-field flex-1 max-w-[150px]"
@@ -297,6 +301,7 @@ export default function TeachersPage() {
                   <div className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
                     <Mail size={11} />
                     {t.user_id?.phoneOrEmail || "—"}
+                    {t.user_id?.phone && ` / ${t.user_id.phone}`}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {t.subjects?.map(s => (
@@ -315,7 +320,7 @@ export default function TeachersPage() {
                         setEditForm({
                           name: t.user_id?.name || "",
                           email: t.user_id?.phoneOrEmail?.includes('@') ? t.user_id?.phoneOrEmail : "",
-                          phone: t.user_id?.phoneOrEmail?.includes('@') ? "" : (t.user_id?.phoneOrEmail || "+91 "),
+                          phone: t.user_id?.phone || (t.user_id?.phoneOrEmail?.includes('@') ? "+91 " : (t.user_id?.phoneOrEmail || "+91 ")),
                           subjects: t.subjects?.map(s => typeof s === 'object' ? s._id : s) || []
                         });
                       }}
