@@ -10,7 +10,12 @@ export async function PUT(req, { params }) {
     const authUser = await requireRole(["ADMIN"]);
     const { id } = await params;
     const body = await req.json();
-    const { name, class_id } = body;
+    let { name, class_id } = body;
+
+    // Default prefix if not present
+    if (name && !name.toLowerCase().startsWith("section")) {
+      name = `Section ${name}`;
+    }
 
     const section = await Section.findOneAndUpdate(
       { _id: id, institute_id: authUser.institute_id },
