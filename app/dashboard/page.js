@@ -2,11 +2,40 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { LayoutDashboard, Users, UserPlus, FileText, Calendar, Wallet, Bell, Target, TrendingUp, AlertTriangle, ArrowUpRight, ChevronRight, Activity, BookOpen } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, LineChart, Line, Legend } from 'recharts';
+import {
+  LayoutDashboard, Users, UserPlus, FileText, Calendar, Wallet, Bell, Target,
+  TrendingUp, TrendingDown, AlertTriangle, ArrowUpRight, ChevronRight, Activity,
+  BookOpen, Search, GraduationCap, CalendarCheck, BarChart3, Award, Zap,
+  ShieldAlert, Eye
+} from "lucide-react";
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, LabelList, LineChart, Line, Legend
+} from "recharts";
+import DirectorDashboard from "@/components/DirectorDashboard";
 
-const COLORS = ['#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
-const BAR_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
+const COLORS = ["#10b981","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#ec4899","#06b6d4"];
+const BAR_COLORS = ["#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444","#06b6d4","#ec4899"];
+const AVATAR_COLORS = ["#6366f1","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4","#3b82f6","#ef4444"];
+
+function PctRing({ pct, size = 48, stroke = 4, color }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (circ * Math.min(pct || 0, 100)) / 100;
+  const c = color || (pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444");
+  return (
+    <svg width={size} height={size} className="flex-shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={c} strokeWidth={stroke}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+      <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle"
+        className="text-[10px] font-bold" fill={c}>
+        {pct != null ? `${Math.round(pct)}%` : "—"}
+      </text>
+    </svg>
+  );
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState(null);
@@ -15,6 +44,8 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [testClassFilter, setTestClassFilter] = useState("All");
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [teacherSectionFilter, setTeacherSectionFilter] = useState("ALL");
 
   const testClasses = useMemo(() => {
     if (!graphs?.tests) return [];
@@ -32,37 +63,30 @@ export default function DashboardPage() {
     return graphs.tests.filter(t => t.name.startsWith(testClassFilter + " -"));
   }, [graphs, testClassFilter]);
 
-  const testTimelineFormatted = useMemo(() => {
-    if (!graphs?.testTimeline) return [];
-    const grouped = {};
-    const sections = new Set();
-    
-    // Group by date
-    graphs.testTimeline.forEach(t => {
-      const date = t.dateFormatted;
-      if (!grouped[date]) grouped[date] = { date, fullDate: t.date };
-      
-      const secName = t.sectionName;
-      if (testClassFilter === "All" || t.className === testClassFilter) {
-        grouped[date][secName] = t.avgScore;
-        sections.add(secName);
-      }
-    });
-    
-    return {
-      data: Object.values(grouped).sort((a,b) => a.fullDate.localeCompare(b.fullDate)),
-      sections: Array.from(sections).sort()
-    };
-  }, [graphs, testClassFilter]);
+  // Teacher-specific memos — must be at top level (Rules of Hooks)
+  const filteredStudents = useMemo(() => {
+    let list = stats?.students || [];
+    if (teacherSectionFilter !== "ALL") {
+      list = list.filter(s => s.sectionName === teacherSectionFilter);
+    }
+    if (teacherSearch.trim()) {
+      const q = teacherSearch.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [stats, teacherSearch, teacherSectionFilter]);
 
-  useEffect(() => {
-    loadStats();
-  }, []);
+  const sectionNames = useMemo(() => {
+    if (!stats?.students) return [];
+    return [...new Set(stats.students.map(s => `${s.className} - ${s.sectionName}`))].sort();
+  }, [stats]);
+
+  useEffect(() => { loadStats(); }, []);
 
   async function loadStats() {
     try {
-      const baseData = await fetch("/api/dashboard").then((r) => r.json()).catch(() => ({}));
-      
+      const baseData = await fetch("/api/dashboard").then(r => r.json()).catch(() => ({}));
+
       let extraDataPromise = Promise.resolve(null);
       let graphPromise = Promise.resolve(null);
       let attRiskPromise = Promise.resolve(null);
@@ -80,11 +104,7 @@ export default function DashboardPage() {
       }
 
       const [attRisk, feeRisk, perfRisk, graphData, extraData] = await Promise.all([
-        attRiskPromise,
-        feeRiskPromise,
-        perfRiskPromise,
-        graphPromise,
-        extraDataPromise
+        attRiskPromise, feeRiskPromise, perfRiskPromise, graphPromise, extraDataPromise
       ]);
 
       if (baseData?.role === "STUDENT") {
@@ -94,537 +114,393 @@ export default function DashboardPage() {
         setStats({ ...baseData, ...(extraData || {}) });
       }
 
-      
       const mappedInsights = {};
-      // ... (rest of logic remains same, but filtered by role in JSX)
       if (feeRisk?.success && feeRisk.count > 0) {
-         mappedInsights.feeAlert = {
-           count: feeRisk.count,
-           data: feeRisk.data,
-           total_amount: feeRisk.data.reduce((acc, curr) => acc + curr.pendingAmount, 0),
-           top_name: feeRisk.data[0].name,
-           top_amount: feeRisk.data[0].pendingAmount
-         };
+        mappedInsights.feeAlert = {
+          count: feeRisk.count, data: feeRisk.data,
+          total_amount: feeRisk.data.reduce((acc, curr) => acc + curr.pendingAmount, 0),
+          top_name: feeRisk.data[0].name, top_amount: feeRisk.data[0].pendingAmount
+        };
       }
-      if (attRisk?.success && attRisk.count > 0) {
-         mappedInsights.attendanceAlert = attRisk;
-      }
+      if (attRisk?.success && attRisk.count > 0) mappedInsights.attendanceAlert = attRisk;
       if (perfRisk?.success && perfRisk.count > 0) {
-         mappedInsights.testAlert = [{
-           section_name: perfRisk.data[0].name + " & others underperforming",
-           drop_percentage: perfRisk.data[0].avgMarks
-         }];
+        mappedInsights.testAlert = [{ section_name: perfRisk.data[0].name + " & others underperforming", drop_percentage: perfRisk.data[0].avgMarks }];
       }
-      if (baseData?.topPerformers) {
-        mappedInsights.topPerformers = baseData.topPerformers;
-      }
+      if (baseData?.topPerformers) mappedInsights.topPerformers = baseData.topPerformers;
       setInsights(mappedInsights);
 
       if (baseData?.role === "ADMIN" && graphData && !graphData.error) setGraphs(graphData);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
     setLoading(false);
   }
 
   if (loading) {
     return (
-      <div className="space-y-6 max-w-7xl mx-auto">
-        <div className="h-8 w-56 animate-shimmer rounded-lg" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 animate-shimmer rounded-lg" />)}
+      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-0">
+        <div className="h-8 w-56 animate-shimmer rounded-2xl" />
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <div key={i} className="h-28 animate-shimmer rounded-2xl" />)}
         </div>
-        <div className="h-80 animate-shimmer rounded-lg" />
+        <div className="h-80 animate-shimmer rounded-2xl" />
       </div>
     );
   }
 
-  const cardStyles = {
-    "Total Students": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
-    "Fees Collected": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
-    "Unpaid Dues": { bg: "bg-white", border: "border-gray-200", text: "text-red-600", label: "text-gray-500", iconBg: "bg-red-50", iconColor: "text-red-500" },
-    "Present Today": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-blue-50", iconColor: "text-blue-600" },
-    "Absent Today": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-amber-50", iconColor: "text-amber-600" },
-    "My Sections": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
-    "My Students": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-slate-100", iconColor: "text-slate-600" },
-    "Days Present": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
-    "Total Classes": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-gray-100", iconColor: "text-gray-600" },
-    "My Subjects": { bg: "bg-white", border: "border-gray-200", text: "text-gray-900", label: "text-gray-500", iconBg: "bg-indigo-50", iconColor: "text-indigo-600" },
-  };
+  if (stats?.role === "ADMIN") return <DirectorDashboard />;
 
-  const isAdmin = stats?.role === "ADMIN";
   const isTeacher = stats?.role === "TEACHER";
   const isStudent = stats?.role === "STUDENT";
 
-  const cards = stats ? [
-    // ADMIN ONLY stats
-    isAdmin && stats.totalStudents !== undefined && { label: "Total Students", value: stats.totalStudents, icon: Users },
-    isAdmin && stats.collectedFees !== undefined && { label: "Fees Collected", value: `₹${(stats.collectedFees || 0).toLocaleString()}`, icon: Wallet },
-    isAdmin && stats.pendingFees !== undefined && { label: "Unpaid Dues", value: `₹${(stats.pendingFees || 0).toLocaleString()}`, icon: FileText },
-    isAdmin && stats.presentToday !== undefined && { label: "Present Today", value: stats.presentToday || 0, icon: Calendar },
-    isAdmin && stats.absentToday !== undefined && { label: "Absent Today", value: stats.absentToday || 0, icon: Users },
+  // ─── TEACHER DASHBOARD ───────────────────────────────────────────────
+  if (isTeacher) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6 pb-2 px-4 sm:px-0">
+        {/* Header Removed - Now in global layout */}
 
-    // TEACHER ONLY stats
-    isTeacher && stats.sectionsCount !== undefined && { label: "My Sections", value: stats.sectionsCount, icon: LayoutDashboard },
-    isTeacher && stats.studentCount !== undefined && { label: "My Students", value: stats.studentCount, icon: Users },
-    isTeacher && stats.subjectNames !== undefined && { label: "My Subjects", value: stats.subjectNames, icon: BookOpen },
-
-    // STUDENT ONLY stats
-    isStudent && stats.pendingFees !== undefined && { label: "Unpaid Dues", value: `₹${(stats.pendingFees || 0).toLocaleString()}`, icon: FileText },
-    isStudent && stats.presentCount !== undefined && { label: "Days Present", value: stats.presentCount, icon: Calendar },
-    isStudent && stats.totalAttendanceDays !== undefined && { label: "Total Classes", value: stats.totalAttendanceDays, icon: FileText },
-  ].filter(Boolean) : [];
-
-  return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">
-              {stats?.role === "ADMIN" ? "Management Dashboard" : 
-               stats?.role === "TEACHER" ? "Faculty Portal" : 
-               "Student Dashboard"}
-            </h1>
-            {isStudent && stats?.className && (
-              <span className="px-3 py-1 bg-slate-800 text-white text-xs font-black uppercase tracking-widest rounded-md shadow-sm">
-                {stats.className} - Section {stats.sectionName}
-              </span>
-            )}
-          </div>
-          <p className="page-subtitle mt-1">
-            {stats?.role === "ADMIN" ? "Comprehensive institutional metrics and operational status." :
-             stats?.role === "TEACHER" ? "Track your sections, attendance, and student performance." :
-             "Overview of your academic progress and upcoming schedules."}
-          </p>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "My Sections", value: stats.sectionsCount || 0, Icon: LayoutDashboard },
+            { label: "My Students", value: stats.studentCount || 0, Icon: Users },
+            { label: "Low Attendance", value: stats.lowAttendanceCount || 0, Icon: AlertTriangle },
+            { label: "Tests", value: stats.testsCount || 0, Icon: FileText },
+          ].map((c, i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-[24px] p-5 flex flex-col justify-between transition-all duration-300 hover:translate-y-[-2px] text-gray-800" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-500">
+                  <c.Icon size={16} strokeWidth={2} />
+                </div>
+                <span className="text-[12px] font-bold text-gray-500 tracking-wide">{c.label}</span>
+              </div>
+              <div className="flex items-end justify-between">
+                <span className="text-3xl font-bold tracking-tight text-slate-900">{c.value}</span>
+              </div>
+            </div>
+          ))}
         </div>
-        {stats?.role === "ADMIN" && (
-          <Link href="/reports" className="btn-primary whitespace-nowrap text-sm">
-            <FileText size={15} /> Generate Report
-          </Link>
+
+        {/* Batch Performance */}
+        {stats.sections?.length > 0 && (
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-50 flex items-center gap-3">
+              <div className="icon-badge-sm icon-badge-indigo">
+                <BarChart3 size={15} strokeWidth={2} />
+              </div>
+              <h2 className="text-[14px] font-bold text-gray-900">Batch Performance</h2>
+            </div>
+            <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {stats.sections.map((sec, i) => (
+                <div key={i} className="border border-gray-100 rounded-2xl p-4 flex items-center justify-between hover:bg-amber-50/20 transition-all">
+                  <div>
+                    <div className="text-sm font-bold text-gray-900">{sec.className} - {sec.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{sec.studentCount} students</div>
+                  </div>
+                  <PctRing pct={sec.avgPerformance} size={44} stroke={3} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Student List with Scores */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="icon-badge-sm icon-badge-blue">
+                <Users size={15} strokeWidth={2} />
+              </div>
+              <h2 className="text-[14px] font-bold text-gray-900">Student Details</h2>
+              <span className="text-[11px] text-gray-400 font-semibold">{filteredStudents.length}</span>
+            </div>
+            <div className="flex gap-2 sm:ml-auto">
+              <div className="relative flex-1 sm:flex-initial">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={teacherSearch}
+                  onChange={e => setTeacherSearch(e.target.value)}
+                  className="w-full sm:w-48 pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-1 focus:ring-amber-400/50 outline-none"
+                  placeholder="Search student..."
+                />
+              </div>
+              <select
+                value={teacherSectionFilter}
+                onChange={e => setTeacherSectionFilter(e.target.value)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-600 focus:ring-1 focus:ring-amber-400/50 outline-none"
+              >
+                <option value="ALL">All Sections</option>
+                {sectionNames.map(sn => <option key={sn} value={sn.split(" - ")[1]}>{sn}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Mobile: Card view */}
+          <div className="sm:hidden p-3 space-y-2">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-8 text-sm text-gray-400">No students found.</div>
+            ) : filteredStudents.map((s, i) => (
+              <div key={i} className="border border-gray-100 rounded-xl p-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style={{ backgroundColor: AVATAR_COLORS[s.name.charCodeAt(0) % AVATAR_COLORS.length] }}>
+                  {s.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-gray-900 truncate">{s.name}</div>
+                  <div className="text-[10px] text-gray-400">{s.className} - {s.sectionName}</div>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <div className="text-center">
+                    <div className={`text-xs font-bold ${s.avgScore != null ? (s.avgScore >= 60 ? "text-emerald-600" : "text-red-600") : "text-gray-300"}`}>
+                      {s.avgScore != null ? `${s.avgScore}%` : "—"}
+                    </div>
+                    <div className="text-[8px] text-gray-400 uppercase">Score</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-xs font-bold ${s.attendancePct != null ? (s.attendancePct >= 75 ? "text-emerald-600" : "text-red-600") : "text-gray-300"}`}>
+                      {s.attendancePct != null ? `${s.attendancePct}%` : "—"}
+                    </div>
+                    <div className="text-[8px] text-gray-400 uppercase">Att.</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: Table view */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100">
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-6 py-3">Student</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-4 py-3">Section</th>
+                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider px-4 py-3">Avg Score</th>
+                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider px-4 py-3">Attendance</th>
+                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">No students found.</td></tr>
+                ) : filteredStudents.map((s, i) => {
+                  const risk = (s.avgScore != null && s.avgScore < 50) || (s.attendancePct != null && s.attendancePct < 75);
+                  return (
+                    <tr key={i} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${risk ? "bg-red-50/20" : ""}`}>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: AVATAR_COLORS[s.name.charCodeAt(0) % AVATAR_COLORS.length] }}>
+                            {s.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-[12px] font-bold text-gray-900">{s.name}</div>
+                            <div className="text-[10px] text-gray-400">{s.phone}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-gray-600 font-medium">{s.className} - {s.sectionName}</td>
+                      <td className="px-4 py-3 text-center">
+                        {s.avgScore != null ? (
+                          <span className={`text-[12px] font-bold ${s.avgScore >= 70 ? "text-emerald-600" : s.avgScore >= 50 ? "text-amber-600" : "text-red-600"}`}>{s.avgScore}%</span>
+                        ) : <span className="text-[11px] text-gray-300">No tests</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {s.attendancePct != null ? (
+                          <span className={`text-[12px] font-bold ${s.attendancePct >= 75 ? "text-emerald-600" : s.attendancePct >= 50 ? "text-amber-600" : "text-red-600"}`}>{s.attendancePct}%</span>
+                        ) : <span className="text-[11px] text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {risk ? (
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full border border-red-200">AT RISK</span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full border border-emerald-200">OK</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Risk Alert */}
+        {(stats.lowAttendanceCount || 0) > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-3">
+            <div className="icon-badge-sm icon-badge-red flex-shrink-0">
+              <ShieldAlert size={15} />
+            </div>
+            <div className="text-sm">
+              <p className="font-bold text-red-800">{stats.lowAttendanceCount} students below 75% attendance</p>
+              <p className="text-red-600 text-xs mt-0.5">Consider reaching out to these students or their parents.</p>
+            </div>
+          </div>
         )}
       </div>
+    );
+  }
 
-      {/* ─── KPI CARDS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((c, idx) => {
-          const Icon = c.icon;
-          const style = cardStyles[c.label] || cardStyles["Total Classes"];
-          return (
-            <div key={idx} className={`stat-card ${style.bg} ${style.border} border`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className={`text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${style.label}`}>{c.label}</div>
-                  <div className={`text-2xl font-bold tracking-tight ${style.text}`}>{c.value}</div>
-                </div>
-                <div className={`p-2 ${style.iconBg} rounded-md`}>
-                  <Icon size={18} className={style.iconColor} strokeWidth={1.8} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ─── ACTION REQUIRED ─── */}
-      {insights && stats?.role === "ADMIN" && (insights.feeAlert?.count > 0 || insights.attendanceAlert?.count > 0) && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-5">
-           <h2 className="text-sm font-semibold text-red-800 flex items-center gap-2 tracking-wide mb-4 uppercase">
-             <AlertTriangle size={15} className="text-red-500"/> Action Required
-           </h2>
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-             {insights.feeAlert?.count > 0 && (
-               <div className="bg-white border border-red-100 p-4 rounded-lg flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition">
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-sm">Overdue Fees Critical Risk ({insights.feeAlert.count})</h3>
-                    <div className="mt-2 space-y-1">
-                       {insights.feeAlert.data.slice(0, 3).map((student, i) => (
-                         <div key={i} className="flex justify-between items-center text-xs">
-                           <span className="font-medium text-gray-700">{student.name}</span>
-                           <span className="text-red-600 font-bold">₹{student.pendingAmount.toLocaleString()}</span>
-                         </div>
-                       ))}
-                       {insights.feeAlert.count > 3 && (
-                         <div className="text-xs text-gray-500 italic">...and {insights.feeAlert.count - 3} more</div>
-                       )}
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-2">
-                    <Link href="/students?risk=fees" className="btn-primary !bg-red-600 hover:!bg-red-700 whitespace-nowrap text-xs flex items-center gap-1.5 shadow-sm">
-                      <ArrowUpRight size={13}/> View Students
-                    </Link>
-                  </div>
-               </div>
-             )}
-             {insights.attendanceAlert?.count > 0 && (
-               <div className="bg-white border border-red-100 p-4 rounded-lg flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition">
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-sm">Attendance Blacklist ({insights.attendanceAlert.count} &lt; 50%)</h3>
-                    <div className="mt-2 space-y-1">
-                       {insights.attendanceAlert.data.slice(0, 3).map((student, i) => (
-                         <div key={i} className="flex justify-between items-center text-xs">
-                           <span className="font-medium text-gray-700">{student.name}</span>
-                           <span className="text-red-600 font-bold">{student.percentage}%</span>
-                         </div>
-                       ))}
-                       {insights.attendanceAlert.count > 3 && (
-                         <div className="text-xs text-gray-500 italic">...and {insights.attendanceAlert.count - 3} more</div>
-                       )}
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-2">
-                    <Link href="/students?risk=attendance" className="btn-primary !bg-red-600 hover:!bg-red-700 whitespace-nowrap text-xs flex items-center gap-1.5 shadow-sm">
-                      <ArrowUpRight size={13}/> View Students
-                    </Link>
-                  </div>
-               </div>
-             )}
-           </div>
+  // ─── STUDENT DASHBOARD ───────────────────────────────────────────────
+  if (isStudent) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6 pb-2 px-4 sm:px-0">
+        {/* Header - H1 removed, kept section info */}
+        <div className="flex justify-end mb-2">
+          <span className="px-3.5 py-1.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-sm">
+            {stats?.className} - {stats?.sectionName}
+          </span>
         </div>
-      )}
 
-      {/* ─── GRAPHS ─── */}
-      {graphs && stats?.role === "ADMIN" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* Management Profile */}
-          <div className="card flex flex-col h-full min-h-[400px] border-slate-200">
-            <h3 className="section-heading mb-6 text-slate-800 font-bold border-b border-slate-50 pb-4">
-               <Activity size={14} className="text-slate-400" />
-               Management Intelligence
-            </h3>
-            
-            <div className="space-y-4 flex-1 overflow-y-auto pr-1">
-              {insights?.feeAlert ? (
-                <div className="p-4 border border-red-100 bg-red-50/30 rounded-xl flex items-start gap-3">
-                  <div className="mt-0.5 p-2 bg-red-100 text-red-600 rounded-lg shrink-0 shadow-sm">
-                    <AlertTriangle size={15} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-bold text-slate-900 mb-1 tracking-tight">Revenue Alert</p>
-                    <p className="text-slate-600 leading-relaxed">
-                      <span className="text-red-700 font-bold underline decoration-red-200 underline-offset-2">{insights.feeAlert.top_name}</span> has an outstanding balance of ₹{insights.feeAlert.top_amount.toLocaleString()}.
-                    </p>
-                  </div>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: "Attendance", value: stats.attendancePct != null ? `${stats.attendancePct}%` : `${stats.presentCount}/${stats.totalAttendanceDays}`, Icon: CalendarCheck },
+            { label: "Avg Marks", value: stats.avgMarks != null ? `${stats.avgMarks}%` : "—", Icon: BarChart3 },
+            { label: "Section Rank", value: stats.rank ? `#${stats.rank}` : "—", Icon: Award, sub: stats.totalInSection ? `of ${stats.totalInSection}` : null },
+            { label: "Pending Fees", value: `₹${(stats.pendingFees || 0).toLocaleString()}`, Icon: Wallet },
+          ].map((c, i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-[24px] p-5 flex flex-col justify-between transition-all duration-300 hover:translate-y-[-2px] text-gray-800" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-500">
+                  <c.Icon size={16} strokeWidth={2} />
                 </div>
-              ) : (
-                <div className="p-4 border border-emerald-100 bg-emerald-50/30 rounded-xl flex items-start gap-3">
-                  <div className="mt-0.5 p-2 bg-emerald-100 text-emerald-700 rounded-lg shrink-0 shadow-sm">
-                    <Wallet size={15} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-bold text-slate-900 mb-1 tracking-tight">Operational Stability</p>
-                    <p className="text-slate-600 leading-relaxed">Financial inflows are currently stable. No immediate high-priority defaulters detected.</p>
-                  </div>
-                </div>
-              )}
-              
-              {graphs?.attendance?.length >= 10 ? (
-                (() => {
-                  const recent = graphs.attendance.slice(-3);
-                  const previous = graphs.attendance.slice(-6, -3);
-                  const recentAvg = recent.reduce((a, b) => a + b.presentPct, 0) / recent.length;
-                  const previousAvg = previous.reduce((a, b) => a + b.presentPct, 0) / previous.length;
-                  
-                  if (recentAvg < previousAvg - 5) {
-                    return (
-                      <div className="p-4 border border-amber-100 bg-amber-50/30 rounded-xl flex items-start gap-3">
-                        <div className="mt-0.5 p-2 bg-amber-100 text-amber-700 rounded-lg shrink-0 shadow-sm">
-                          <TrendingUp size={15} className="rotate-180" />
-                        </div>
-                        <div className="text-sm">
-                          <p className="font-bold text-slate-900 mb-1 tracking-tight">Attendance Variance</p>
-                          <p className="text-slate-600 leading-relaxed">
-                            Detected a <span className="text-amber-800 font-bold">{(previousAvg - recentAvg).toFixed(1)}% reduction</span> in student engagement compared to previous reporting window.
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="p-4 border border-blue-100 bg-blue-50/30 rounded-xl flex items-start gap-3">
-                      <div className="mt-0.5 p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0 shadow-sm">
-                        <TrendingUp size={15} />
-                      </div>
-                      <div className="text-sm">
-                        <p className="font-bold text-slate-900 mb-1 tracking-tight">Engagement Metric</p>
-                        <p className="text-slate-600 leading-relaxed">Student attendance trends indicate consistent institutional engagement growth.</p>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="p-4 border border-slate-200 bg-slate-50/50 rounded-xl flex items-start gap-3">
-                  <div className="mt-0.5 p-2 bg-white border border-slate-200 text-slate-400 rounded-lg shrink-0 shadow-sm">
-                    <Calendar size={15} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-bold text-slate-900 mb-1 tracking-tight">Data Accumulation</p>
-                    <p className="text-slate-500 leading-relaxed">Insufficient attendance data for trending. Continuing historical record-keeping.</p>
-                  </div>
-                </div>
-              )}
-              
-              {insights?.testAlert ? (
-                <div className="p-4 border border-slate-200 bg-white rounded-xl flex items-start gap-3 shadow-sm">
-                  <div className="mt-0.5 p-2 bg-slate-800 text-white rounded-lg shrink-0 shadow-sm">
-                    <Target size={15} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-bold text-slate-900 mb-1 tracking-tight">Academic Performance</p>
-                    <p className="text-slate-600 leading-relaxed">
-                      Performance deviation in <span className="font-bold text-slate-800">{insights.testAlert[0].section_name}</span>. Average scores declined by {insights.testAlert[0].drop_percentage}%.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 border border-slate-200 bg-white rounded-xl flex items-start gap-3 shadow-sm">
-                  <div className="mt-0.5 p-2 bg-slate-100 text-slate-600 rounded-lg shrink-0 border border-slate-200">
-                    <Target size={15} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-bold text-slate-900 mb-1 tracking-tight">Academic Baseline</p>
-                    <p className="text-slate-500 leading-relaxed">Performance scores across all sections remain within expected statistical deviations.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Top Performers Section */}
-              {insights?.topPerformers && (
-                <div className="p-5 bg-slate-900 text-white rounded-2xl shadow-xl mt-4">
-                   <div className="flex items-center gap-3 mb-4 border-b border-white/10 pb-3">
-                      <TrendingUp size={16} className="text-emerald-400" />
-                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Institutional Excellence</h4>
-                   </div>
-                   <div className="space-y-4">
-                      {insights.topPerformers.map((tp, i) => (
-                        <div key={i} className="flex justify-between items-center group">
-                           <div className="min-w-0">
-                              <p className="text-[13px] font-bold truncate group-hover:text-emerald-400 transition-colors tracking-tight">{tp.student_name}</p>
-                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5">{tp.section_name}</p>
-                           </div>
-                           <div className="text-right shrink-0">
-                              <div className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-[11px] font-black rounded-full border border-emerald-500/20 shadow-sm italic">
-                                 {tp.score}%
-                              </div>
-                           </div>
-                        </div>
-                      ))}
-                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Attendance Chart */}
-          <div className="card p-6 border-slate-200">
-            <h3 className="section-heading mb-6 text-slate-800 font-bold pb-4 border-b border-slate-50">
-              <Users size={14} className="text-slate-400"/>
-              Longitudinal Attendance Trend
-            </h3>
-            <div className="h-64 w-full relative min-h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={graphs.attendance || []}>
-                  <defs>
-                    <linearGradient id="colorAttendance" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1e293b" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#1e293b" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickMargin={15} tick={{ fill: '#94a3b8', fontWeight: 500 }} />
-                  <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 100]} tick={{ fill: '#94a3b8', fontWeight: 500 }} width={40} />
-                  <Tooltip cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '4 4' }} contentStyle={{ borderRadius: '12px', border: '1px solid #f1f5f9', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: '700', padding: '12px' }} />
-                  <Area type="monotone" dataKey="presentPct" stroke="#1e293b" strokeWidth={3} fillOpacity={1} fill="url(#colorAttendance)" dot={{ r: 4, fill: '#1e293b', strokeWidth: 0 }} activeDot={{ r: 6, fill: '#1e293b', stroke: '#fff', strokeWidth: 2 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Fee Breakdown */}
-          <div className="card p-6 border-slate-200 flex flex-col">
-            <h3 className="section-heading mb-6 text-slate-800 font-bold pb-4 border-b border-slate-50">
-              <Wallet size={14} className="text-slate-400"/>
-              Revenue Distribution
-            </h3>
-            <div className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-8 min-h-[240px]">
-              <div className="h-[220px] w-full max-w-[220px] shrink-0 relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', padding: '10px', fontSize: '11px', fontWeight: '700' }} 
-                      formatter={(value) => `₹${value.toLocaleString()}`} 
-                    />
-                    <Pie
-                      data={graphs.feesObj || []}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={70}
-                      outerRadius={95}
-                      paddingAngle={4}
-                      dataKey="value"
-                      stroke="none"
-                      cornerRadius={6}
-                    >
-                      {(graphs.feesObj || []).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                <span className="text-[12px] font-bold text-gray-500 tracking-wide">{c.label}</span>
               </div>
-              <div className="grid grid-cols-1 gap-3 w-full sm:w-auto">
-                {(graphs.feesObj || []).map((entry, idx) => (
-                  <div key={idx} className="p-4 rounded-xl bg-slate-50/50 border border-slate-100 min-w-[160px] flex items-center justify-between group hover:bg-white hover:shadow-sm transition-all duration-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: entry.fill }} />
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none block mb-1">{entry.name}</span>
-                        <div className="text-sm font-black text-slate-900 tracking-tight leading-none italic">
-                          ₹{(entry.value || 0).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-end justify-between">
+                <span className="text-3xl font-bold tracking-tight text-slate-900">{c.value}</span>
               </div>
+              {c.sub && <div className="text-[10px] text-slate-400 font-semibold mt-1">{c.sub}</div>}
             </div>
-          </div>
-
-          {/* Academic Performance Over Time */}
-          <div className="card p-6 border-slate-200 col-span-1 lg:col-span-2 mt-2">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 pb-4 border-b border-slate-50 gap-4">
-              <h3 className="section-heading text-slate-800 font-bold m-0 w-auto">
-                <Target size={14} className="text-slate-400 inline-block mr-2" style={{ verticalAlign: 'middle' }}/>
-                Interactive Performance Analysis
-              </h3>
-              <div className="flex items-center gap-2 relative z-20">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Filter Class:</label>
-                <select 
-                  className="input-field !py-1.5 !px-3 !min-h-0 !text-sm !w-auto bg-slate-50 border-slate-200 font-semibold text-slate-700 shadow-sm cursor-pointer"
-                  value={testClassFilter}
-                  onChange={(e) => setTestClassFilter(e.target.value)}
-                >
-                  {testClasses.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="w-full">
-              {/* By Section Bar Chart */}
-              <div>
-                <div style={{ height: Math.max(280, (filteredTests.length || 5) * 40) }} className="w-full relative mt-4">
-                  {filteredTests.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={filteredTests} layout="vertical" margin={{ left: -10, right: 35, top: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" horizontal={false} vertical={true} />
-                        <XAxis type="number" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fill: '#cbd5e1', fontWeight: 600 }} />
-                        <YAxis type="category" dataKey="name" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} width={110} tick={{ fill: '#475569', fontWeight: 600 }} formatter={(v) => testClassFilter !== 'All' ? v.split(' - ')[1] : v} />
-                        <Tooltip
-                          cursor={{ fill: '#f8fafc' }}
-                          contentStyle={{ borderRadius: '10px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '12px', fontWeight: '600' }}
-                          formatter={(v) => [`${v}%`, 'Avg Score']}
-                        />
-                        <Bar dataKey="avgScore" radius={[0, 5, 5, 0]} maxBarSize={20}>
-                          {filteredTests.map((entry, index) => (
-                            <Cell key={`bar-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} fillOpacity={0.85} />
-                          ))}
-                          <LabelList dataKey="avgScore" position="right" formatter={(v) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl border border-dashed border-slate-200 h-[280px]">
-                      <p className="text-sm font-medium text-slate-400">No data available for {testClassFilter !== 'All' ? `Class ${testClassFilter}` : 'any class'}.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
-
+          ))}
         </div>
-      )}
 
-      {/* ─── STUDENT NOTIFICATIONS ─── */}
-      {isStudent && (
-        <div className="card p-6 border-slate-200 mt-6">
-          <h3 className="section-heading mb-6 text-slate-800 font-bold pb-4 border-b border-slate-50 flex items-center gap-2">
-            <Bell size={16} className="text-slate-400" />
-            Recent Alerts & Notifications
-          </h3>
-          <div className="space-y-4">
-            {notifications.length > 0 ? (
-              notifications.map((notif, index) => {
-                const isFee = notif.type === "FEE_REMINDER";
-                const isTest = notif.type === "TEST_RESULT_ALERT";
-                const isAttendance = notif.type === "ATTENDANCE_ALERT";
-                const isReport = notif.type === "REPORT_CARD";
-                const showPayNow = isFee;
-                const showReportIssue = isTest || isAttendance || isReport;
-                
-                const iconColorMap = {
-                  "FEE_REMINDER": "bg-amber-100 text-amber-600",
-                  "TEST_RESULT_ALERT": "bg-purple-100 text-purple-600",
-                  "ATTENDANCE_ALERT": "bg-red-100 text-red-600",
-                  "REPORT_CARD": "bg-blue-100 text-blue-600",
-                };
-                const borderMap = {
-                  "FEE_REMINDER": "border-amber-100 bg-amber-50/20",
-                  "TEST_RESULT_ALERT": "border-purple-100 bg-purple-50/20",
-                  "ATTENDANCE_ALERT": "border-red-100 bg-red-50/20",
-                  "REPORT_CARD": "border-blue-100 bg-blue-50/20",
-                };
+        {/* Strong & Weak Topics + Upcoming Tests */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Strong Topics */}
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden flex flex-col h-full" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+            <div className="px-4 sm:px-5 py-3.5 border-b border-gray-50 flex items-center gap-2.5">
+              <div className="icon-badge-sm icon-badge-green">
+                <TrendingUp size={14} />
+              </div>
+              <h2 className="text-[13px] font-bold text-gray-900">Strong Topics</h2>
+            </div>
+            <div className="p-4 space-y-2 flex-1 flex flex-col justify-center">
+              {stats.strongTopics?.length > 0 ? stats.strongTopics.map((t, i) => (
+                <div key={i} className="flex items-center justify-between py-1.5">
+                  <span className="text-sm font-medium text-gray-800">{t.name}</span>
+                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full">{t.avgPct}%</span>
+                </div>
+              )) : <div className="text-sm text-gray-400 text-center py-4">Take tests to see your strong subjects</div>}
+            </div>
+          </div>
 
+          {/* Weak Topics */}
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden flex flex-col h-full" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+            <div className="px-4 sm:px-5 py-3.5 border-b border-gray-50 flex items-center gap-2.5">
+              <div className="icon-badge-sm icon-badge-red">
+                <TrendingDown size={14} />
+              </div>
+              <h2 className="text-[13px] font-bold text-gray-900">Needs Improvement</h2>
+            </div>
+            <div className="p-4 space-y-2 flex-1 flex flex-col justify-center">
+              {stats.weakTopics?.length > 0 ? stats.weakTopics.map((t, i) => (
+                <div key={i} className="flex items-center justify-between py-1.5">
+                  <span className="text-sm font-medium text-gray-800">{t.name}</span>
+                  <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full">{t.avgPct}%</span>
+                </div>
+              )) : <div className="text-sm text-gray-400 text-center py-4">No weak areas detected</div>}
+            </div>
+          </div>
+
+          {/* Upcoming Tests */}
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden flex flex-col h-full" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+            <div className="px-4 sm:px-5 py-3.5 border-b border-gray-50 flex items-center gap-2.5">
+              <div className="icon-badge-sm icon-badge-indigo">
+                <Calendar size={14} />
+              </div>
+              <h2 className="text-[13px] font-bold text-gray-900">Upcoming Tests</h2>
+            </div>
+            <div className="p-4 space-y-2 flex-1 flex flex-col justify-center">
+              {stats.upcomingTests?.length > 0 ? stats.upcomingTests.map((t, i) => {
+                const d = new Date(t.date);
+                const diff = Math.ceil((d - new Date()) / 86400000);
                 return (
-                  <div key={index} className={`p-4 border rounded-xl shadow-sm transition hover:shadow-md ${borderMap[notif.type] || "border-slate-100 bg-slate-50/20"}`}>
-                    <div className="flex items-start gap-4">
-                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${iconColorMap[notif.type] || "bg-slate-100 text-slate-600"}`}>
-                        <Bell size={16} />
-                      </div>
+                  <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{t.name}</div>
+                      <div className="text-[10px] text-gray-400">{t.subjectCount} subject{t.subjectCount !== 1 ? "s" : ""}</div>
+                    </div>
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${diff <= 1 ? "bg-red-100 text-red-700" : diff <= 3 ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                      {diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : `${diff} days`}
+                    </span>
+                  </div>
+                );
+              }) : <div className="text-sm text-gray-400 text-center py-4">No upcoming tests</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-50 flex items-center gap-2.5">
+            <div className="icon-badge-sm icon-badge-amber">
+              <Bell size={14} />
+            </div>
+            <h2 className="text-[14px] font-bold text-gray-900">Notifications</h2>
+          </div>
+          <div className="p-4 sm:p-6 space-y-3">
+            {notifications.length > 0 ? (
+              notifications.slice(0, 5).map((notif, i) => {
+                const isFee = notif.type === "FEE_REMINDER";
+                const borderMap = {
+                  FEE_REMINDER: "border-amber-100 bg-amber-50/20",
+                  TEST_RESULT_ALERT: "border-purple-100 bg-purple-50/20",
+                  ATTENDANCE_ALERT: "border-red-100 bg-red-50/20",
+                  REPORT_CARD: "border-blue-100 bg-blue-50/20",
+                };
+                return (
+                  <div key={i} className={`p-3 sm:p-4 border rounded-2xl ${borderMap[notif.type] || "border-gray-100"}`}>
+                    <div className="flex items-start gap-3">
+                      <Bell size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-slate-900 text-sm mb-1">{notif.type.replace(/_/g, " ")}</h4>
-                        <p className="text-slate-600 text-sm leading-relaxed">{notif.message}</p>
-                        <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">{new Date(notif.created_at || new Date()).toLocaleString()}</p>
+                        <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{notif.type.replace(/_/g, " ")}</h4>
+                        <p className="text-gray-600 text-xs sm:text-sm mt-0.5 leading-relaxed">{notif.message}</p>
                       </div>
                     </div>
-                    {/* CTA Buttons */}
-                    {(showPayNow || showReportIssue) && (
-                      <div className="mt-3 pt-3 border-t border-black/5 flex items-center justify-end gap-2">
-                        {showPayNow && (
-                          <a 
-                            href={notif.action_link || "/fees"}
-                            target={notif.action_link ? "_blank" : "_self"}
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider rounded-md transition-colors shadow-sm"
-                          >
-                            Pay Now
-                          </a>
-                        )}
-                        {showReportIssue && (
-                          <a 
-                            href="https://wa.me/919509728788?text=I%20want%20to%20report%20an%20issue%20with%20my%20records"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 bg-white text-slate-600 text-[11px] font-bold uppercase tracking-wider rounded-md hover:bg-slate-50 hover:border-slate-300 transition-all"
-                          >
-                            Report Issue
-                          </a>
-                        )}
+                    {isFee && (
+                      <div className="mt-2 flex justify-end">
+                        <a href={notif.action_link || "/fees"} className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-xl">Pay Now</a>
                       </div>
                     )}
                   </div>
                 );
               })
             ) : (
-              <div className="text-center py-10 text-slate-400 font-medium text-sm border-2 border-dashed border-slate-100 rounded-xl">
-                No recent notifications found.
-              </div>
+              <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-100 rounded-2xl">No recent notifications</div>
             )}
           </div>
         </div>
-      )}
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Attendance", href: "/attendance", Icon: CalendarCheck, badgeClass: "icon-badge-blue" },
+            { label: "Tests", href: "/tests", Icon: FileText, badgeClass: "icon-badge-purple" },
+            { label: "Homework", href: "/homework", Icon: BookOpen, badgeClass: "icon-badge-amber" },
+            { label: "Report Card", href: "/reports", Icon: Award, badgeClass: "icon-badge-green" },
+          ].map((a, i) => (
+            <Link key={i} href={a.href} className="flex items-center gap-3 p-4 rounded-2xl bg-white border border-gray-100 hover:translate-y-[-2px] transition-all duration-200" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03)' }}>
+              <div className={`icon-badge-sm ${a.badgeClass}`}>
+                <a.Icon size={15} />
+              </div>
+              <span className="text-xs sm:text-sm font-bold text-gray-800">{a.label}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── FALLBACK (shouldn't reach here) ──────────────────────────────────
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-12 text-center text-gray-500">
+      <p>Loading dashboard...</p>
     </div>
   );
 }

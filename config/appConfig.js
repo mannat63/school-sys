@@ -16,7 +16,7 @@ export const ROLE_MAP = {
 export const DEFAULT_ROLE = "STUDENT";
 
 // Institute name used when auto-provisioning
-export const INSTITUTE_NAME = "Alpha School";
+export const INSTITUTE_NAME = "Intellogy Coaching";
 
 // Feature toggles (defaults — can be overridden per-institute in DB)
 export const FEATURES = {

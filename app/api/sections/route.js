@@ -60,21 +60,27 @@ export async function POST(req) {
     const authUser = await requireRole(["ADMIN"]);
 
     const body = await req.json();
-    let { name, class_id } = body;
+    let { name, class_id, capacity } = body;
 
-    // Default prefix if not present
-    if (name && !name.toLowerCase().startsWith("section")) {
-      name = `Section ${name}`;
+    if (!name || !class_id) {
+      return NextResponse.json({ success: false, error: "Name and class are required" }, { status: 400 });
     }
 
-    const existingSection = await Section.findOne({ name, class_id, institute_id: authUser.institute_id });
+    // Default prefix if not present
+    let sectionName = name;
+    if (sectionName && !sectionName.toLowerCase().startsWith("section")) {
+      sectionName = `Section ${sectionName}`;
+    }
+
+    const existingSection = await Section.findOne({ name: sectionName, class_id, institute_id: authUser.institute_id });
     if (existingSection) {
       return NextResponse.json({ error: "A section with this name already exists in this class." }, { status: 400 });
     }
 
     const section = await Section.create({
-      name,
+      name: sectionName,
       class_id,
+      capacity: capacity ? parseInt(capacity) : 30,
       institute_id: authUser.institute_id,
     });
 

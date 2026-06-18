@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Config
+  turbopack: {},
+  serverExternalPackages: ["jspdf", "jspdf-autotable"],
 };
 
 module.exports = nextConfig;

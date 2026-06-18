@@ -13,4 +13,8 @@ const PaymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+PaymentSchema.index({ institute_id: 1, status: 1 });
+PaymentSchema.index({ institute_id: 1, createdAt: -1 });
+PaymentSchema.index({ institute_id: 1, student_id: 1 });
+
 export default mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);

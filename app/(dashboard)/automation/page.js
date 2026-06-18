@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Settings, Bell, CalendarCheck, Zap, Send,
-  GraduationCap, AlertTriangle, CheckCircle, Layers, ArrowRight
+  GraduationCap, AlertTriangle, CheckCircle, Layers, ArrowRight,
+  Database, Users, UserPlus, BookOpen, ClipboardList, BarChart3,
+  FolderOpen, ExternalLink, Info
 } from "lucide-react";
 
 export default function AutomationPage() {
@@ -14,6 +16,10 @@ export default function AutomationPage() {
   const [promoting, setPromoting] = useState(false);
   const [promotionResult, setPromotionResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState(null);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -40,6 +46,24 @@ export default function AutomationPage() {
       toast.error("Network error during promotion", { id });
     }
     setPromoting(false);
+  }
+
+  async function saveDriveSettings() {
+    const id = toast.loading("Saving…");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          google_drive_link: settings?.google_drive_link,
+          google_drive_instructions: settings?.google_drive_instructions,
+        }),
+      });
+      if (res.ok) toast.success("Drive settings saved!", { id });
+      else toast.error("Failed to save", { id });
+    } catch {
+      toast.error("Network error", { id });
+    }
   }
 
   async function saveRazorpay() {
@@ -128,7 +152,7 @@ export default function AutomationPage() {
 
           {/* Result */}
           {promotionResult && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-gray-100 rounded-2xl overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                 <CheckCircle size={14} className="text-emerald-500" />
                 <span className="text-xs font-semibold text-gray-700">Promotion complete</span>
@@ -174,34 +198,202 @@ export default function AutomationPage() {
         </div>
       </div>
 
-      {/* ── Demo Data ── */}
+      {/* ── Google Drive Integration ── */}
       <div className="card border border-gray-200 shadow-sm">
-        <div className="flex items-start gap-4 mb-4">
-          <div className="p-2.5 bg-slate-100 text-slate-600 rounded-md flex-shrink-0">
-            <CalendarCheck size={20} strokeWidth={1.8} />
+        <div className="flex items-start gap-4 mb-5">
+          <div className="p-2.5 bg-blue-50 text-blue-600 rounded-md flex-shrink-0">
+            <FolderOpen size={20} strokeWidth={1.8} />
           </div>
-          <div>
-            <div className="font-semibold text-gray-800">System Demo Control</div>
-            <div className="text-sm text-gray-500 mt-0.5">Pre-fill the system with 40 demo students across Classes 8–12.</div>
+          <div className="flex-1">
+            <div className="font-semibold text-gray-800">Google Drive — Homework Folder</div>
+            <div className="text-sm text-gray-500 mt-0.5">
+              Share a Drive folder link with teachers so they can upload and attach homework files.
+            </div>
           </div>
         </div>
-        <div className="pl-16">
-          <button
-            onClick={async () => {
-              if (confirm("This will wipe existing data and seed 40 demo students. Proceed?")) {
-                const id = toast.loading("Seeding demo data…");
-                try {
-                  const res = await fetch("/api/seed", { method: "POST" });
-                  const data = await res.json();
-                  if (res.ok) { toast.success("Demo data seeded!", { id }); window.location.href = "/dashboard"; }
-                  else toast.error(data.error || "Seed failed", { id });
-                } catch { toast.error("Network error", { id }); }
-              }
-            }}
-            className="btn-primary"
-          >
-            <Layers size={15} /> Seed Demo Data
-          </button>
+
+        <div className="pl-16 space-y-4">
+          {/* Folder link */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              Google Drive Folder Link
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="url"
+                placeholder="https://drive.google.com/drive/folders/..."
+                value={settings?.google_drive_link || ""}
+                onChange={(e) => setSettings({ ...settings, google_drive_link: e.target.value })}
+                className="input-field flex-1"
+              />
+              {settings?.google_drive_link && (
+                <a href={settings.google_drive_link} target="_blank" rel="noopener noreferrer" className="btn-secondary flex items-center gap-1.5 whitespace-nowrap">
+                  <ExternalLink size={13} /> Open
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              Instructions for Teachers
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Keep this folder open and accessible. Upload files as PDF. Name files as: Subject_ClassName_Date.pdf"
+              value={settings?.google_drive_instructions || ""}
+              onChange={(e) => setSettings({ ...settings, google_drive_instructions: e.target.value })}
+              className="input-field resize-none text-sm"
+            />
+          </div>
+
+          {/* Tips */}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
+            <Info size={13} className="text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-blue-700">
+              <strong>Setup tips:</strong> In Google Drive, right-click the folder → Share → Change to "Anyone with the link can edit". This lets all teachers upload files without needing individual permissions.
+            </p>
+          </div>
+
+          <button onClick={saveDriveSettings} className="btn-primary">Save Drive Settings</button>
+        </div>
+      </div>
+
+      {/* ── Demo Data ── */}
+      <div className="card border border-indigo-100 shadow-sm">
+        <div className="flex items-start gap-4 mb-4">
+          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-md flex-shrink-0">
+            <Database size={20} strokeWidth={1.8} />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-gray-800">Seed Realistic Demo Data</div>
+            <div className="text-sm text-gray-500 mt-0.5">
+              Populate the system with a full coaching institute dataset for demos and analytics testing.
+            </div>
+          </div>
+        </div>
+
+        {/* What gets seeded */}
+        <div className="pl-16 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[
+              { icon: Users, label: "180 Students", sub: "6 batches · JEE, NEET, Foundation" },
+              { icon: GraduationCap, label: "12 Teachers", sub: "Physics, Chem, Maths, Bio…" },
+              { icon: UserPlus, label: "150 Leads", sub: "Full CRM pipeline" },
+              { icon: ClipboardList, label: "40 Tests", sub: "~1200+ result records" },
+              { icon: CalendarCheck, label: "~8000 Attendance", sub: "46 school days" },
+              { icon: BarChart3, label: "180 Fee Records", sub: "Paid, partial, overdue" },
+            ].map(({ icon: Icon, label, sub }, i) => (
+              <div key={i} className="flex items-start gap-2 p-2.5 bg-gray-50 border border-gray-100 rounded-lg">
+                <Icon size={13} className="text-indigo-500 mt-0.5 shrink-0" strokeWidth={2} />
+                <div>
+                  <div className="text-[11px] font-bold text-gray-800">{label}</div>
+                  <div className="text-[10px] text-gray-400">{sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-amber-600 font-medium mt-3 flex items-center gap-1">
+            <AlertTriangle size={10} /> Existing students, teachers, and records will be wiped first.
+          </p>
+        </div>
+
+        <div className="pl-16 space-y-3">
+          {!showSeedConfirm ? (
+            <button
+              onClick={() => setShowSeedConfirm(true)}
+              disabled={seeding}
+              className="btn-primary disabled:opacity-50"
+            >
+              <Database size={15} />
+              {seeding ? "Seeding… this takes ~30 seconds" : "Seed Demo Data"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <AlertTriangle size={15} className="text-amber-500 flex-shrink-0" />
+              <span className="text-sm font-medium text-amber-800 flex-1">
+                This will replace all existing data with demo data. Continue?
+              </span>
+              <div className="flex gap-2 flex-shrink-0">
+                <button onClick={() => setShowSeedConfirm(false)} className="btn-secondary text-xs !py-1.5">Cancel</button>
+                <button
+                  onClick={async () => {
+                    setShowSeedConfirm(false);
+                    setSeeding(true);
+                    setSeedResult(null);
+                    const toastId = toast.loading("Seeding demo data… (~30 sec)");
+                    try {
+                      const res = await fetch("/api/seed/demo", { method: "POST" });
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        setSeedResult(data.stats);
+                        toast.success("Demo data seeded successfully!", { id: toastId });
+                      } else {
+                        toast.error(data.error || "Seed failed", { id: toastId });
+                      }
+                    } catch {
+                      toast.error("Network error — check server logs", { id: toastId });
+                    }
+                    setSeeding(false);
+                  }}
+                  className="btn-primary text-xs !py-1.5"
+                >
+                  Confirm & Seed
+                </button>
+              </div>
+            </div>
+          )}
+
+          {seeding && (
+            <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+              <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
+              <div className="text-xs text-indigo-700 font-medium">
+                Generating 180 students, 8000 attendance records, 150 leads… please wait.
+              </div>
+            </div>
+          )}
+
+          {seedResult && (
+            <div className="border border-emerald-200 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border-b border-emerald-100">
+                <CheckCircle size={14} className="text-emerald-500" />
+                <span className="text-xs font-semibold text-gray-700">Seed complete</span>
+                <span className="ml-auto text-xs text-gray-500">{seedResult.timeMs}ms</span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-0 divide-x divide-y divide-gray-100">
+                {[
+                  ["Students", seedResult.students],
+                  ["Teachers", seedResult.teachers],
+                  ["Leads", seedResult.leads],
+                  ["Tests", seedResult.tests],
+                  ["Results", seedResult.results],
+                  ["Attendance", seedResult.attendance],
+                  ["Fees", seedResult.fees],
+                  ["Payments", seedResult.payments],
+                ].map(([label, val]) => (
+                  <div key={label} className="px-3 py-2 text-center">
+                    <div className="text-sm font-bold text-gray-900">{val?.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400 font-medium">{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => window.location.href = "/dashboard"}
+                  className="btn-primary text-xs !py-1.5"
+                >
+                  View Dashboard
+                </button>
+                <button
+                  onClick={() => window.location.href = "/leads"}
+                  className="btn-secondary text-xs !py-1.5"
+                >
+                  View Leads CRM
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -269,7 +461,7 @@ export default function AutomationPage() {
       </div>
 
       {/* ── Roadmap ── */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
+      <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
         <div className="flex items-center gap-2.5 mb-4">
           <Bell size={16} className="text-gray-400" strokeWidth={1.8} />
           <h3 className="font-semibold text-gray-700 text-sm">Automation Roadmap</h3>

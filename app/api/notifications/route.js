@@ -11,7 +11,6 @@ export async function GET(req) {
     await dbConnect();
     const authUser = await getAuthUser();
     
-    // Admins and teachers can see all notifications for the institute
     const query = { institute_id: authUser.institute_id };
 
     if (authUser.role === "STUDENT") {
@@ -20,6 +19,19 @@ export async function GET(req) {
 
       // Only show alerts created explicitly for this student
       query.student_id = studentProfile._id;
+    } else if (authUser.role === "TEACHER") {
+      const { default: Teacher } = await import("@/models/Teacher");
+      const { default: Section } = await import("@/models/Section");
+      const teacher = await Teacher.findOne({ user_id: authUser._id }).lean();
+      if (!teacher) return NextResponse.json([], { status: 200 });
+
+      const sections = await Section.find({ teacher_id: teacher._id }).lean();
+      const sectionIds = sections.map(s => s._id);
+
+      const students = await Student.find({ section_id: { $in: sectionIds } }).lean();
+      const studentIds = students.map(s => s._id);
+
+      query.student_id = { $in: studentIds };
     }
 
     // Notifications sorted by newest first

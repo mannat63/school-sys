@@ -3,9 +3,12 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   Wallet, Plus, X, IndianRupee, CheckCircle, AlertCircle,
-  Bell, Calendar, ChevronRight, Clock, TrendingUp, Search
+  Bell, Calendar, ChevronRight, ChevronLeft, Clock, TrendingUp, Search, FileText
 } from "lucide-react";
+
+const PAGE_SIZE = 30;
 import toast from "react-hot-toast";
+import { createPdf, addTable, downloadPdf } from "@/lib/exportPdf";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function midnight(d) {
@@ -353,6 +356,7 @@ export default function FeesPage() {
   const [form, setForm]         = useState({ student_id: "", total_amount: "", due_date: "" });
   const [defaulters, setDefaulters] = useState([]);
   const [reminding, setReminding]   = useState(false);
+  const [feePage, setFeePage]       = useState(1);
 
   // Modal state
   const [modal, setModal] = useState(null); // { student, fees }
@@ -363,14 +367,14 @@ export default function FeesPage() {
     setLoading(true);
     const [f, s, m, dRes, c, sec] = await Promise.all([
       fetch("/api/fees").then(r => r.json()),
-      fetch("/api/students").then(r => r.json()),
+      fetch("/api/students?limit=200").then(r => r.json()),
       fetch("/api/me").then(r => r.json()),
       fetch("/api/defaulters").then(r => r.ok ? r.json() : null).catch(() => null),
       fetch("/api/classes").then(r => r.json()),
       fetch("/api/sections").then(r => r.json()),
     ]);
     setFees(Array.isArray(f) ? f : []);
-    setStudents(Array.isArray(s) ? s : []);
+    setStudents(Array.isArray(s) ? s : (s?.students || []));
     setClasses(Array.isArray(c) ? c : []);
     setSections(Array.isArray(sec) ? sec : []);
     if (dRes && Array.isArray(dRes)) setDefaulters(dRes);
@@ -478,9 +482,12 @@ export default function FeesPage() {
   }, [students, search, filter, feesByStudent, filterClass, filterSection, sections]);
 
   // Stats
+  const feePages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
+  const paginatedStudents = filteredStudents.slice((feePage - 1) * PAGE_SIZE, feePage * PAGE_SIZE);
   const overdueStudents = students.filter(s =>
     (feesByStudent[String(s._id)] || []).some(f => feeStatus(f) === "OVERDUE")
   ).length;
+
 
   if (loading) return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -504,7 +511,23 @@ export default function FeesPage() {
           </p>
         </div>
         {role === "ADMIN" && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={async () => {
+              const { doc, startY, addFooter } = await createPdf({ title: "Fee Report", subtitle: `${students.length} students`, landscape: true });
+              const head = ["#", "Student", "Phone", "Total Fee", "Paid", "Due", "Status"];
+              const body = students.map((s, i) => {
+                const sName = s.user_id?.name || s.parent_name || "—";
+                const sPhone = s.parent_phone || "—";
+                const sttFees = fees.filter(f => f.student_id?.toString() === s._id?.toString());
+                const totalAmt = sttFees.reduce((a, f) => a + (f.total_amount || 0), 0);
+                const paidAmt = sttFees.reduce((a, f) => a + (f.paid_amount || 0), 0);
+                const dueAmt = sttFees.reduce((a, f) => a + (f.due_amount || 0), 0);
+                const overdue = sttFees.some(f => feeStatus(f) === "OVERDUE");
+                return [i + 1, sName, sPhone, `₹${totalAmt.toLocaleString()}`, `₹${paidAmt.toLocaleString()}`, `₹${dueAmt.toLocaleString()}`, overdue ? "OVERDUE" : dueAmt > 0 ? "DUE" : "PAID"];
+              });
+              addTable(doc, { startY, head, body });
+              downloadPdf(doc, "fee-report.pdf", addFooter);
+            }} className="btn-secondary text-sm"><FileText size={15}/> Export PDF</button>
             <button onClick={handleRemindAll} disabled={reminding || overdueStudents === 0}
               className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-md transition-colors shadow-sm disabled:opacity-50">
               <Bell size={14} /> {reminding ? "Sending…" : "Remind All Overdue"}
@@ -589,7 +612,7 @@ export default function FeesPage() {
             </div>
           </div>
           
-          <div className="flex flex-wrap items-center gap-3 bg-gray-50 p-2 border border-gray-200 rounded-lg">
+          <div className="flex flex-wrap items-center gap-3 bg-gray-50 p-2 border border-gray-100 rounded-2xl">
              <div className="flex items-center gap-2">
                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Class</span>
                  <select value={filterClass} onChange={(e) => { setFilterClass(e.target.value); setFilterSection(""); }} className="input-field !py-1 text-xs h-auto min-w-[120px]">
@@ -613,7 +636,7 @@ export default function FeesPage() {
 
       {/* ─ Student Cards Grid ─ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredStudents.map(student => (
+        {paginatedStudents.map(student => (
           <StudentFeeCard
             key={student._id}
             student={student}
@@ -621,13 +644,35 @@ export default function FeesPage() {
             onOpen={(s, f) => setModal({ student: s, fees: f })}
           />
         ))}
-        {filteredStudents.length === 0 && (
+        {paginatedStudents.length === 0 && (
           <div className="col-span-full py-16 flex flex-col items-center justify-center text-center opacity-50">
             <Wallet size={28} className="text-gray-300 mb-2" />
             <p className="text-sm font-semibold text-gray-500">No students match this filter</p>
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {feePages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-sm text-gray-500">Page {feePage} of {feePages} · {filteredStudents.length} students</p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setFeePage(p => Math.max(1, p-1))} disabled={feePage <= 1} className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-40">
+              <ChevronLeft size={14} />
+            </button>
+            {Array.from({ length: Math.min(5, feePages) }, (_, i) => {
+              const start = Math.max(1, Math.min(feePage - 2, feePages - 4));
+              const n = start + i;
+              return n <= feePages ? (
+                <button key={n} onClick={() => setFeePage(n)} className={`w-8 h-8 text-xs font-semibold rounded-md border transition-colors ${n === feePage ? "bg-gray-900 text-white border-slate-800" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>{n}</button>
+              ) : null;
+            })}
+            <button onClick={() => setFeePage(p => Math.min(feePages, p+1))} disabled={feePage >= feePages} className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-40">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─ Fee Timeline Modal ─ */}
       {modal && (

@@ -14,13 +14,13 @@ export default function ClassesAndSectionsPage() {
   const [showClassForm, setShowClassForm] = useState(false);
   const [showSectionFormId, setShowSectionFormId] = useState(null);
   const [classForm, setClassForm] = useState({ name: "" });
-  const [sectionForm, setSectionForm] = useState({ name: "" });
+  const [sectionForm, setSectionForm] = useState({ name: "", capacity: 30 });
 
   const [creatingClass, setCreatingClass] = useState(false);
   const [creatingSection, setCreatingSection] = useState(false);
 
   const [editSectionId, setEditSectionId] = useState(null);
-  const [editSectionForm, setEditSectionForm] = useState({ name: "" });
+  const [editSectionForm, setEditSectionForm] = useState({ name: "", capacity: 30 });
   const [deletingSectionId, setDeletingSectionId] = useState(null);
   const [deletingClassId, setDeletingClassId] = useState(null);
 
@@ -28,13 +28,13 @@ export default function ClassesAndSectionsPage() {
     Promise.all([
       fetch("/api/sections").then((r) => r.json()),
       fetch("/api/classes").then((r) => r.json()),
-      fetch("/api/students").then((r) => r.json()),
+      fetch("/api/students?limit=200").then((r) => r.json()),
       fetch("/api/me").then((r) => r.json()),
     ])
       .then(([b, cl, st, m]) => {
         setSections(Array.isArray(b) ? b : []);
         setClasses(Array.isArray(cl) ? cl : []);
-        setStudents(Array.isArray(st) ? st : []);
+        setStudents(Array.isArray(st) ? st : (st?.students || []));
         setRole(m?.role || "STUDENT");
       })
       .finally(() => setLoading(false));
@@ -77,11 +77,11 @@ export default function ClassesAndSectionsPage() {
       const res = await fetch("/api/sections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: sectionForm.name, class_id: classId }),
+        body: JSON.stringify({ name: sectionForm.name, class_id: classId, capacity: sectionForm.capacity }),
       });
       if (res.ok) {
         setShowSectionFormId(null);
-        setSectionForm({ name: "" });
+        setSectionForm({ name: "", capacity: 30 });
         const updated = await fetch("/api/sections").then((r) => r.json());
         setSections(Array.isArray(updated) ? updated : []);
         toast.success("Section created");
@@ -101,7 +101,7 @@ export default function ClassesAndSectionsPage() {
       const res = await fetch(`/api/sections/${sectionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editSectionForm.name }),
+        body: JSON.stringify({ name: editSectionForm.name, capacity: editSectionForm.capacity }),
       });
       if (res.ok) {
         const updated = await fetch("/api/sections").then((r) => r.json());
@@ -257,7 +257,7 @@ export default function ClassesAndSectionsPage() {
               {/* Card Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/60">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-800 text-white rounded-md flex items-center justify-center text-xs font-black flex-shrink-0">
+                  <div className="w-8 h-8 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-black flex-shrink-0">
                     {classNum || cl.name.slice(0, 2)}
                   </div>
                   <div>
@@ -275,7 +275,7 @@ export default function ClassesAndSectionsPage() {
                           setShowSectionFormId(null);
                         } else {
                           setShowSectionFormId(cl._id);
-                          setSectionForm({ name: "" });
+                          setSectionForm({ name: "", capacity: 30 });
                         }
                       }}
                       className={`text-xs font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-md border transition-all ${
@@ -306,11 +306,21 @@ export default function ClassesAndSectionsPage() {
                     <input
                       placeholder="Section name, e.g. A"
                       value={sectionForm.name}
-                      onChange={(e) => setSectionForm({ name: e.target.value })}
+                      onChange={(e) => setSectionForm({ ...sectionForm, name: e.target.value })}
                       className="input-field flex-1 !py-1.5 text-sm"
                       required
                       disabled={creatingSection}
                       autoFocus
+                    />
+                    <input
+                      type="number"
+                      placeholder="Seats"
+                      min="1"
+                      value={sectionForm.capacity}
+                      onChange={(e) => setSectionForm({ ...sectionForm, capacity: parseInt(e.target.value) || 30 })}
+                      className="input-field w-20 !py-1.5 text-sm"
+                      required
+                      disabled={creatingSection}
                     />
                     <button type="submit" className="btn-primary !py-1.5 !px-3 text-xs" disabled={creatingSection}>
                       {creatingSection ? "…" : "Add"}
@@ -328,22 +338,33 @@ export default function ClassesAndSectionsPage() {
                     return (
                       <div
                         key={sec._id}
-                        className="relative group border border-gray-200 rounded-lg bg-white hover:border-slate-300 hover:shadow-sm transition-all flex flex-col items-center justify-center py-3 min-h-[70px]"
+                        className="relative group border border-gray-100 rounded-2xl bg-white hover:border-slate-300 hover:shadow-sm transition-all flex flex-col items-center justify-center py-3 min-h-[70px]"
                       >
                         {editSectionId === sec._id ? (
                           <form onSubmit={(e) => handleEditSectionSave(e, sec._id)} className="flex flex-col gap-1.5 w-full px-2">
                             <input
                               className="input-field !py-1 !px-2 text-xs text-center"
                               value={editSectionForm.name}
-                              onChange={(e) => setEditSectionForm({ name: e.target.value })}
+                              onChange={(e) => setEditSectionForm({ ...editSectionForm, name: e.target.value })}
                               autoFocus
                               required
                             />
-                            <div className="flex justify-center gap-1">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase">Seats</span>
+                              <input
+                                type="number"
+                                min="1"
+                                className="input-field !py-1 !px-2 text-xs text-center flex-1"
+                                value={editSectionForm.capacity}
+                                onChange={(e) => setEditSectionForm({ ...editSectionForm, capacity: parseInt(e.target.value) || 30 })}
+                                required
+                              />
+                            </div>
+                            <div className="flex justify-center gap-1 mt-1">
                               <button type="button" onClick={() => setEditSectionId(null)} className="p-1 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-600">
                                 <X size={11} />
                               </button>
-                              <button type="submit" className="p-1 rounded bg-slate-800 text-white">
+                              <button type="submit" className="p-1 rounded bg-gray-900 text-white">
                                 <Check size={11} />
                               </button>
                             </div>
@@ -351,12 +372,12 @@ export default function ClassesAndSectionsPage() {
                         ) : (
                           <>
                             <span className="text-lg font-black text-slate-800 leading-none">{sec.name}</span>
-                            <span className="text-[10px] text-gray-400 font-medium mt-0.5 leading-none">{secCount} students</span>
+                            <span className="text-[10px] text-gray-400 font-medium mt-0.5 leading-none">{secCount} / {sec.capacity || 30} seats</span>
 
                             {role === "ADMIN" && (
-                              <div className="absolute inset-0 rounded-lg flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-slate-800/5 backdrop-blur-[1px]">
+                              <div className="absolute inset-0 rounded-lg flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-gray-900/5 backdrop-blur-[1px]">
                                 <button
-                                  onClick={() => { setEditSectionId(sec._id); setEditSectionForm({ name: sec.name }); }}
+                                  onClick={() => { setEditSectionId(sec._id); setEditSectionForm({ name: sec.name, capacity: sec.capacity || 30 }); }}
                                   className="p-1.5 rounded-md bg-white shadow border border-gray-200 text-gray-400 hover:text-blue-600 transition-colors"
                                 >
                                   <Pencil size={11} />

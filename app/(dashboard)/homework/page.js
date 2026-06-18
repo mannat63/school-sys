@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, BookOpen, Clock, FileText, CheckCircle, Save, X, Edit3, Trash2, Bell } from "lucide-react";
+import { Plus, Search, BookOpen, Clock, FileText, CheckCircle, Save, X, Edit3, Trash2, Bell, FolderOpen, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast, Toaster } from "react-hot-toast";
 export default function HomeworkPage() {
   const [role, setRole] = useState("");
+
+  const PAGE_SIZE = 30;
+  const [page, setPage] = useState(1);
 
   const [homeworks, setHomeworks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,7 +16,8 @@ export default function HomeworkPage() {
 
   // --- TEACHER MODAL STATE ---
   const [sections, setSections] = useState([]);
-  const [formData, setFormData] = useState({ title: "", description: "", subject: "", due_date: "", section_id: "" });
+  const [formData, setFormData] = useState({ title: "", description: "", subject: "", due_date: "", section_id: "", drive_link: "" });
+  const [instituteDriveLink, setInstituteDriveLink] = useState("");
   const [hwSubmissions, setHwSubmissions] = useState([]);
   const [editingGrades, setEditingGrades] = useState({});
   
@@ -43,8 +47,15 @@ export default function HomeworkPage() {
   }
 
   async function fetchSections() {
-    const res = await fetch("/api/sections");
-    if (res.ok) setSections(await res.json());
+    const [secRes, settingsRes] = await Promise.all([
+      fetch("/api/sections"),
+      fetch("/api/settings")
+    ]);
+    if (secRes.ok) setSections(await secRes.json());
+    if (settingsRes.ok) {
+      const s = await settingsRes.json();
+      setInstituteDriveLink(s.google_drive_link || "");
+    }
   }
 
   // --- TEACHER ACTIONS ---
@@ -59,7 +70,7 @@ export default function HomeworkPage() {
       if (res.ok) {
         toast.success("Homework assigned!");
         setShowCreateModal(false);
-        setFormData({ title: "", description: "", subject: "", due_date: "", section_id: "" });
+        setFormData({ title: "", description: "", subject: "", due_date: "", section_id: "", drive_link: "" });
         fetchHomeworks();
       } else {
         toast.error((await res.json()).error);
@@ -156,7 +167,7 @@ export default function HomeworkPage() {
         {role === "TEACHER" && (
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+            className="bg-slate-900 hover:bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
           >
             <Plus size={16} /> Assign Homework
           </button>
@@ -170,9 +181,10 @@ export default function HomeworkPage() {
           <p className="text-gray-500 text-sm">When homework is assigned, it will appear here.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {homeworks.map(hw => {
-            const dueDate = new Date(hw.due_date);
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {homeworks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(hw => {
+              const dueDate = new Date(hw.due_date);
             const isOverdue = dueDate < new Date() && role === "STUDENT" && hw.student_status === "PENDING";
 
             return (
@@ -188,7 +200,7 @@ export default function HomeworkPage() {
               >
                 {/* Due Badge */}
                 <div className={`absolute -top-3 -right-2 px-3 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1 ${
-                  isOverdue ? "bg-red-500 text-white" : "bg-slate-800 text-white"
+                  isOverdue ? "bg-red-500 text-white" : "bg-gray-900 text-white"
                 }`}>
                   <Clock size={12} />
                   {isOverdue ? "OVERDUE" : `Due ${dueDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
@@ -196,8 +208,14 @@ export default function HomeworkPage() {
 
                 <div className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-500 mb-1">{hw.subject}</div>
                 <h3 className="text-base text-gray-900 font-bold mb-2 leading-tight group-hover:text-indigo-600 transition-colors">{hw.title}</h3>
-                <p className="text-sm text-gray-500 mb-4 line-clamp-2">{hw.description}</p>
-                
+                <p className="text-sm text-gray-500 mb-3 line-clamp-2">{hw.description}</p>
+                {hw.drive_link && (
+                  <a href={hw.drive_link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-2.5 py-1 mb-3 transition-colors">
+                    <FolderOpen size={11} /> View on Drive
+                  </a>
+                )}
+
                 <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
                   {role === "TEACHER" ? (
                     <div className="text-xs font-medium text-gray-600">
@@ -213,7 +231,32 @@ export default function HomeworkPage() {
               </div>
             );
           })}
-        </div>
+          </div>
+          
+          {Math.ceil(homeworks.length / PAGE_SIZE) > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-100 pt-4 mt-6">
+              <span className="text-sm text-gray-500 font-medium">
+                Page {page} of {Math.ceil(homeworks.length / PAGE_SIZE)}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(Math.ceil(homeworks.length / PAGE_SIZE), p + 1))}
+                  disabled={page === Math.ceil(homeworks.length / PAGE_SIZE)}
+                  className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* --- TEACHER: VIEW SUBMISSIONS MODAL --- */}
@@ -236,7 +279,7 @@ export default function HomeworkPage() {
                 <button onClick={() => deleteHw(selectedHw._id)} className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white p-2 rounded-lg transition-colors" title="Delete Homework">
                   <Trash2 size={16} />
                 </button>
-                <button onClick={() => setSelectedHw(null)} className="hover:bg-slate-800 p-2 rounded-lg text-slate-300 hover:text-white transition-colors">
+                <button onClick={() => setSelectedHw(null)} className="hover:bg-gray-900 p-2 rounded-lg text-slate-300 hover:text-white transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -245,7 +288,7 @@ export default function HomeworkPage() {
             <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
               <div className="space-y-4">
                 {hwSubmissions.map(sub => (
-                  <div key={sub.student_id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+                  <div key={sub.student_id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
                     <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                       <div>
                         <div className="font-bold text-gray-900">{sub.student_name}</div>
@@ -349,15 +392,21 @@ export default function HomeworkPage() {
              </div>
              
              <div className="p-6 overflow-y-auto space-y-5 flex-1">
-                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                    <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                      <FileText size={14}/> Assignment Details
                    </div>
                    <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{selectedHw.description}</div>
+                   {selectedHw.drive_link && (
+                     <a href={selectedHw.drive_link} target="_blank" rel="noopener noreferrer"
+                       className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-3 py-1.5 transition-colors">
+                       <FolderOpen size={12} /> Open on Google Drive <ExternalLink size={10} />
+                     </a>
+                   )}
                 </div>
 
                 {selectedHw.teacher_feedback && (
-                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm">
+                   <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
                       <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Teacher Feedback</div>
                       <div className="text-sm text-emerald-900">{selectedHw.teacher_feedback}</div>
                    </div>
@@ -433,12 +482,40 @@ export default function HomeworkPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <FolderOpen size={11} /> Google Drive Link <span className="font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={formData.drive_link}
+                      onChange={e => setFormData({...formData, drive_link: e.target.value})}
+                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="https://drive.google.com/..."
+                    />
+                    {formData.drive_link && (
+                      <a href={formData.drive_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-semibold text-gray-600 transition-colors">
+                        <ExternalLink size={12} /> Open
+                      </a>
+                    )}
+                  </div>
+                  {instituteDriveLink && !formData.drive_link && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, drive_link: instituteDriveLink})}
+                      className="mt-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <FolderOpen size={11} /> Use institute folder
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button onClick={() => setShowCreateModal(false)} type="button" className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
-              <button type="submit" form="createHwForm" className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-md transition-all">Assign Now</button>
+              <button type="submit" form="createHwForm" className="bg-slate-900 hover:bg-gray-900 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-md transition-all">Assign Now</button>
             </div>
           </div>
         </div>

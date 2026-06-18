@@ -6,6 +6,8 @@ const SettingsSchema = new mongoose.Schema(
     feeReminders: { type: Boolean, default: true },
     attendanceAlerts: { type: Boolean, default: true },
     razorpay_link: { type: String, default: "" },
+    google_drive_link: { type: String, default: "" },
+    google_drive_instructions: { type: String, default: "Keep folder open and accessible. Share with teachers via this link." },
     timetable_config: { 
       type: Array, 
       default: [

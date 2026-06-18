@@ -57,6 +57,22 @@ export async function GET(req) {
       return NextResponse.json(homeworks);
     }
 
+    if (authUser.role === "ADMIN") {
+      const homeworks = await Homework.find({ institute_id: authUser.institute_id })
+        .populate({ path: "section_id", populate: { path: "class_id", select: "name" } })
+        .populate({ path: "teacher_id", populate: { path: "user_id", select: "name" } })
+        .sort({ createdAt: -1 })
+        .lean();
+        
+      // Also fetch submission counts
+      for (let hw of homeworks) {
+        hw.submissions = await HomeworkSubmission.countDocuments({ homework_id: hw._id, status: { $ne: "PENDING" } });
+        hw.total_students = await Student.countDocuments({ section_id: hw.section_id });
+      }
+
+      return NextResponse.json(homeworks);
+    }
+
     return NextResponse.json({ error: "Access Denied" }, { status: 403 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -71,7 +87,7 @@ export async function POST(req) {
     if (!teacher) return NextResponse.json({ error: "Teacher profile required" }, { status: 404 });
 
     const body = await req.json();
-    const { title, description, subject, due_date, section_id } = body;
+    const { title, description, subject, due_date, section_id, drive_link } = body;
 
     const hw = await Homework.create({
       title,
@@ -80,7 +96,8 @@ export async function POST(req) {
       due_date: new Date(due_date),
       section_id,
       teacher_id: teacher._id,
-      institute_id: authUser.institute_id
+      institute_id: authUser.institute_id,
+      drive_link: drive_link || ""
     });
 
     // Notify all students in this section

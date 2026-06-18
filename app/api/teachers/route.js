@@ -4,6 +4,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import Teacher from "@/models/Teacher";
 import User from "@/models/User";
 import "@/models/Subject";
+import { logActivity } from "@/lib/logActivity";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +12,6 @@ export async function GET() {
   try {
     await dbConnect();
     const authUser = await getAuthUser();
-
-    if (authUser.role !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const teachers = await Teacher.find({ institute_id: authUser.institute_id })
       .select("user_id institute_id subjects")
@@ -67,6 +64,8 @@ export async function POST(req) {
       institute_id: authUser.institute_id,
       subjects: subjects || []
     });
+
+    logActivity({ institute_id: authUser.institute_id, action: "CREATED", collection: "Teacher", record_id: teacher._id, record_label: name, performed_by: authUser._id, performed_by_name: authUser.name });
 
     return NextResponse.json(teacher, { status: 201 });
   } catch (error) {

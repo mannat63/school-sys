@@ -8,4 +8,6 @@ const ClassSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+ClassSchema.index({ institute_id: 1 });
+
 export default mongoose.models.Class || mongoose.model("Class", ClassSchema);

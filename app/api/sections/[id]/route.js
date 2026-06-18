@@ -10,16 +10,20 @@ export async function PUT(req, { params }) {
     const authUser = await requireRole(["ADMIN"]);
     const { id } = await params;
     const body = await req.json();
-    let { name, class_id } = body;
+    let { name, class_id, capacity } = body;
 
     // Default prefix if not present
-    if (name && !name.toLowerCase().startsWith("section")) {
-      name = `Section ${name}`;
+    let sectionName = name;
+    if (sectionName && !sectionName.toLowerCase().startsWith("section")) {
+      sectionName = `Section ${sectionName}`;
     }
+
+    const updateData = { name: sectionName, class_id };
+    if (capacity !== undefined) updateData.capacity = parseInt(capacity);
 
     const section = await Section.findOneAndUpdate(
       { _id: id, institute_id: authUser.institute_id },
-      { name, class_id },
+      updateData,
       { new: true }
     )
       .populate("class_id", "name");

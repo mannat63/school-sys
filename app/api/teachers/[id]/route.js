@@ -1,12 +1,70 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db/mongodb";
-import { requireRole } from "@/lib/auth";
+import { getAuthUser, requireRole } from "@/lib/auth";
 import Teacher from "@/models/Teacher";
 import User from "@/models/User";
 import RecycleBin from "@/models/RecycleBin";
+import TimetableEntry from "@/models/TimetableEntry";
+import Section from "@/models/Section";
+import Student from "@/models/Student";
+import Homework from "@/models/Homework";
+import HomeworkSubmission from "@/models/HomeworkSubmission";
 import mongoose from "mongoose";
+import { logActivity } from "@/lib/logActivity";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(req, { params }) {
+  try {
+    await dbConnect();
+    const authUser = await getAuthUser();
+    const { id } = await params;
+
+    const teacher = await Teacher.findOne({ _id: id, institute_id: authUser.institute_id })
+      .populate("user_id", "name phoneOrEmail")
+      .populate("subjects", "name")
+      .lean();
+
+    if (!teacher) return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
+
+    // Get sections this teacher is assigned to (via timetable)
+    const entries = await TimetableEntry.find({ teacher_id: teacher._id, institute_id: authUser.institute_id }, { section_id: 1 }).lean();
+    const sectionIds = [...new Set(entries.map(e => e.section_id?.toString()).filter(Boolean))];
+
+    const sections = await Section.find({ _id: { $in: sectionIds } })
+      .populate("class_id", "name")
+      .lean();
+
+    // Student counts per section
+    const sectionCounts = await Student.aggregate([
+      { $match: { section_id: { $in: sectionIds.map(s => new mongoose.Types.ObjectId(s)) }, institute_id: new mongoose.Types.ObjectId(authUser.institute_id) } },
+      { $group: { _id: "$section_id", count: { $sum: 1 } } },
+    ]);
+    const countMap = Object.fromEntries(sectionCounts.map(s => [s._id.toString(), s.count]));
+
+    const sectionsWithCounts = sections.map(s => ({
+      ...s,
+      studentCount: countMap[s._id.toString()] || 0,
+    }));
+
+    const totalStudents = sectionsWithCounts.reduce((sum, s) => sum + s.studentCount, 0);
+
+    // Fetch homework assigned by this teacher
+    const homeworks = await Homework.find({ teacher_id: teacher._id, institute_id: authUser.institute_id })
+      .populate({ path: "section_id", populate: { path: "class_id", select: "name" } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    for (let hw of homeworks) {
+      hw.submissions = await HomeworkSubmission.countDocuments({ homework_id: hw._id, status: { $ne: "PENDING" } });
+      hw.total_students = countMap[hw.section_id?._id?.toString()] || 0;
+    }
+
+    return NextResponse.json({ teacher, sections: sectionsWithCounts, totalStudents, homeworks });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
 
 export async function PUT(req, { params }) {
   try {
@@ -44,6 +102,9 @@ export async function PUT(req, { params }) {
     }
 
     const updated = await Teacher.findById(id).populate("user_id", "name phoneOrEmail").populate("subjects", "name");
+
+    logActivity({ institute_id: authUser.institute_id, action: "UPDATED", collection: "Teacher", record_id: id, record_label: name, performed_by: authUser._id, performed_by_name: authUser.name });
+
     return NextResponse.json(updated);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -74,7 +135,9 @@ export async function DELETE(req, { params }) {
 
     await Teacher.deleteOne({ _id: id });
     if (user) await User.deleteOne({ _id: user._id });
-    
+
+    logActivity({ institute_id: authUser.institute_id, action: "DELETED", collection: "Teacher", record_id: id, record_label: user?.name || "Unknown", performed_by: authUser._id, performed_by_name: authUser.name });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

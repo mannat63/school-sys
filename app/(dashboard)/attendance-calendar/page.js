@@ -96,11 +96,11 @@ export default function AttendanceCalendarPage() {
     setPanelDate(dayDate);
     
     const [sRes, aRes] = await Promise.all([
-      fetch(`/api/students?section_id=${selectedSection}`).then(r => r.json()),
+      fetch(`/api/students?section_id=${selectedSection}&limit=200`).then(r => r.json()),
       fetch(`/api/attendance?section_id=${selectedSection}&date=${dateStr}`).then(r => r.json()),
     ]);
     
-    const sList = Array.isArray(sRes) ? sRes : [];
+    const sList = Array.isArray(sRes) ? sRes : (sRes?.students || []);
     const aList = Array.isArray(aRes) ? aRes : [];
     
     const panelDayStr = dateStr;

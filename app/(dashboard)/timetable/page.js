@@ -279,7 +279,7 @@ export default function TimetablePage() {
 
       {/* Step 1 & 2: Class → Section selector (admin only) */}
       {role === "ADMIN" && (
-        <div className="card bg-slate-800/5 border-slate-200 print:hidden">
+        <div className="card bg-gray-900/5 border-slate-200 print:hidden">
           <div className="flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-[180px]">
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
@@ -343,7 +343,7 @@ export default function TimetablePage() {
           </div>
         ) : (
           <div className="card !p-0 overflow-x-auto shadow-md relative z-0">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 bg-slate-800 print:hidden shrink-0">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 bg-gray-900 print:hidden shrink-0">
               <BookOpen size={14} className="text-slate-300" />
               <span className="text-xs font-bold uppercase tracking-widest text-slate-300 whitespace-nowrap">
                 {role === "TEACHER" ? "My Timetable Overview" : `${classes.find(c => c._id === selectedClass || c._id?.toString() === selectedClass)?.name} · Section ${allSections.find(s => s._id === selectedSection || s._id?.toString() === selectedSection)?.name}`}
@@ -460,7 +460,7 @@ export default function TimetablePage() {
           onClick={(e) => e.target === e.currentTarget && setModal(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
              ... {/* kept compact below */}
-            <div className="px-5 py-4 border-b border-gray-100 bg-slate-800 flex justify-between items-center">
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-900 flex justify-between items-center">
                <div>
                  <h3 className="font-bold text-white text-sm">Assign Slot</h3>
                  <p className="text-slate-400 text-xs mt-0.5">{modal.day} · Period {modal.period_no}</p>
@@ -510,7 +510,7 @@ export default function TimetablePage() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden"
           onClick={(e) => e.target === e.currentTarget && setConfigModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
-             <div className="px-5 py-4 border-b border-gray-100 bg-slate-800 flex justify-between items-center shrink-0">
+             <div className="px-5 py-4 border-b border-gray-100 bg-gray-900 flex justify-between items-center shrink-0">
                <h3 className="font-bold text-white text-sm flex items-center gap-2"><SettingsIcon size={16}/> Configure Timetable</h3>
                <button onClick={() => setConfigModal(false)} className="text-slate-400 hover:text-white transition-colors">
                  <X size={18} />

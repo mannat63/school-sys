@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar as CalendarIcon, CalendarCheck, Save, AlertCircle, Users, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
+import { Calendar as CalendarIcon, CalendarCheck, Save, AlertCircle, Users, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Download } from "lucide-react";
 import toast from "react-hot-toast";
+import { createPdf, addTable, addSectionTitle, downloadPdf } from "@/lib/exportPdf";
 
 const PAGE_SIZE = 15;
 
@@ -21,7 +22,9 @@ export default function AttendancePage() {
   const [studentRecords, setStudentRecords] = useState([]);
   const [studentTimetable, setStudentTimetable] = useState([]);
   const [studentSearchDate, setStudentSearchDate] = useState(todayStr); // Defaults to today
-  const [currentPage, setCurrentPage] = useState(1);
+
+  const PAGE_SIZE = 30;
+  const [attendancePage, setAttendancePage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,10 +88,10 @@ export default function AttendancePage() {
     if (!selectedSection || !selectedSlotStr) return;
     const [subId, periodNo] = selectedSlotStr.split("_");
     Promise.all([
-      fetch(`/api/students?section_id=${selectedSection}`).then((r) => r.json()),
+      fetch(`/api/students?section_id=${selectedSection}&limit=200`).then((r) => r.json()),
       fetch(`/api/attendance?section_id=${selectedSection}&date=${date}&subject_id=${subId}&period_no=${periodNo}`).then((r) => r.json()),
     ]).then(([s, a]) => {
-      setStudents(Array.isArray(s) ? s : []);
+      setStudents(Array.isArray(s) ? s : (s?.students || []));
       setExistingRecords(Array.isArray(a) ? a : []);
       const map = {};
       if (Array.isArray(a)) {
@@ -98,8 +101,12 @@ export default function AttendancePage() {
         s.forEach((st) => { if (!map[st._id]) map[st._id] = "NOT_TAKEN"; });
       }
       setAttendance(map);
+      setAttendancePage(1);
     });
   }, [selectedSection, date, selectedSlotStr]);
+
+  const attendancePages = Math.max(1, Math.ceil(students.length / PAGE_SIZE));
+  const paginatedStudents = students.slice((attendancePage - 1) * PAGE_SIZE, attendancePage * PAGE_SIZE);
 
   function toggle(studentId) {
     setAttendance((prev) => {
@@ -243,7 +250,7 @@ export default function AttendancePage() {
         {/* ── Stat strip ── */}
         <div className="grid grid-cols-3 gap-3">
           {/* Overall % */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Overall</span>
             <div className={`text-3xl font-black mt-2 ${isGood ? "text-emerald-600" : "text-red-500"}`}>
               {pct}%
@@ -260,14 +267,14 @@ export default function AttendancePage() {
           </div>
 
           {/* Present */}
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex flex-col justify-between">
             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Present</span>
             <div className="text-3xl font-black text-emerald-700 mt-2">{presentDays}</div>
             <span className="text-xs font-medium text-emerald-600 mt-1">lectures attended</span>
           </div>
 
           {/* Absent */}
-          <div className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="bg-red-50 border border-red-100 rounded-2xl p-5 flex flex-col justify-between">
             <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Absent</span>
             <div className="text-3xl font-black text-red-600 mt-2">{absentDays}</div>
             <span className="text-xs font-medium text-red-500 mt-1">out of {totalDays} lectures</span>
@@ -275,7 +282,7 @@ export default function AttendancePage() {
         </div>
 
         {/* ── Table card ── */}
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           {/* Card header with search */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50/60">
             <div>
@@ -288,7 +295,7 @@ export default function AttendancePage() {
                 type="date"
                 value={studentSearchDate}
                 onChange={(e) => setStudentSearchDate(e.target.value)}
-                className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-all w-full sm:w-auto"
+                className="pl-8 pr-3 py-2 text-sm border border-gray-100 rounded-2xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-all w-full sm:w-auto"
               />
             </div>
           </div>
@@ -361,16 +368,38 @@ export default function AttendancePage() {
               : "Mark presence for your assigned section and notify absentees."}
           </p>
         </div>
-        {role === "ADMIN" && (
-          <button 
-            onClick={notifyAbsenteesBulk} 
-            disabled={notifying}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-lg hover:shadow-red-500/30 transition-all border border-red-500 mt-4 md:mt-0"
-          >
-            <AlertCircle size={16} />
-            {notifying ? "Notifying..." : "Master Notify (All Batches)"}
-          </button>
-        )}
+        <div className="flex items-center gap-2 mt-4 md:mt-0">
+          {selectedSection && selectedSlotStr && students.length > 0 && (
+            <button
+              onClick={async () => {
+                const sectionObj = sections.find(s => s._id === selectedSection);
+                const sectionLabel = sectionObj ? `${sectionObj.class_id?.name || "Class"} - Sec ${sectionObj.name}` : "Section";
+                const { doc, startY, addFooter } = await createPdf({ title: "Attendance Register", subtitle: `${sectionLabel} · ${new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}` });
+                const present = students.filter(s => attendance[s._id] === "PRESENT").length;
+                const absent = students.filter(s => attendance[s._id] === "ABSENT").length;
+                let y = addSectionTitle(doc, "Summary", startY);
+                y = addTable(doc, { startY: y, head: ["Total Students", "Present", "Absent", "Not Marked"], body: [[String(students.length), String(present), String(absent), String(students.length - present - absent)]] });
+                y += 6;
+                y = addSectionTitle(doc, "Student Attendance", y);
+                addTable(doc, { startY: y, head: ["#", "Student Name", "Status"], body: students.map((s, i) => [String(i + 1), s.user_id?.name || s.parent_name, attendance[s._id] === "PRESENT" ? "Present" : attendance[s._id] === "ABSENT" ? "Absent" : "Not Marked"]) });
+                downloadPdf(doc, `Attendance_${date}.pdf`, addFooter);
+              }}
+              className="btn-secondary text-sm"
+            >
+              <Download size={15} /> PDF
+            </button>
+          )}
+          {role === "ADMIN" && (
+            <button
+              onClick={notifyAbsenteesBulk}
+              disabled={notifying}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-lg hover:shadow-red-500/30 transition-all border border-red-500"
+            >
+              <AlertCircle size={16} />
+              {notifying ? "Notifying..." : "Master Notify (All Batches)"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="card">
@@ -433,7 +462,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => (
+                {paginatedStudents.map((s) => (
                   <tr key={s._id}>
                     <td className="font-semibold text-gray-800">{s.user_id?.name || s.parent_name}</td>
                     <td>
@@ -459,6 +488,29 @@ export default function AttendancePage() {
               </tbody>
             </table>
           </div>
+          {attendancePages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-100 p-4 bg-white">
+              <span className="text-xs text-gray-500 font-medium">
+                Showing {(attendancePage - 1) * PAGE_SIZE + 1} to {Math.min(attendancePage * PAGE_SIZE, students.length)} of {students.length} students
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAttendancePage(p => Math.max(1, p - 1))}
+                  disabled={attendancePage === 1}
+                  className="p-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button
+                  onClick={() => setAttendancePage(p => Math.min(attendancePages, p + 1))}
+                  disabled={attendancePage === attendancePages}
+                  className="p-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="p-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row justify-end items-center gap-3">
             {(role === "ADMIN" || role === "TEACHER") && (
               <button onClick={notifyAbsentees} disabled={notifying || existingRecords.length === 0} className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 w-full sm:w-auto">

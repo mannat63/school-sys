@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FileText, Download, TrendingUp, TrendingDown, Users, Wallet, CheckCircle, Calendar, AlertCircle, X, Send, Award, BookOpen, GraduationCap } from "lucide-react";
+import { FileText, Download, TrendingUp, TrendingDown, Users, Wallet, CheckCircle, Calendar, AlertCircle, X, Send, Award, BookOpen, GraduationCap, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
+import { createPdf, addTable, addSectionTitle, downloadPdf } from "@/lib/exportPdf";
 
 export default function ReportsPage() {
   const [role, setRole] = useState(null);
@@ -22,6 +23,9 @@ export default function ReportsPage() {
 
   const [dateFrom, setDateFrom] = useState(firstDay);
   const [dateTo, setDateTo] = useState(lastDay);
+  
+  const PAGE_SIZE = 30;
+  const [page, setPage] = useState(1);
   
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
@@ -88,6 +92,7 @@ export default function ReportsPage() {
       if (res.ok) {
         const data = await res.json();
         setReport(data);
+        setPage(1);
         toast.success("Report generated");
       } else {
         toast.error("Failed to load report");
@@ -105,13 +110,128 @@ export default function ReportsPage() {
     window.location.href = `/api/reports/export/csv?${params.toString()}`;
   }
 
-  function handlePrintPDF() {
-    window.print();
+  async function handlePrintPDF() {
+    if (!report) return;
+
+    if (role === "ADMIN") {
+      const { doc, pageW, startY, addFooter } = await createPdf({
+        title: "Operational Intelligence Report",
+        subtitle: `${new Date(dateFrom).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} — ${new Date(dateTo).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+        landscape: true,
+      });
+
+      let y = startY;
+
+      // Overview KPIs
+      y = addSectionTitle(doc, "Overview", y);
+      y = addTable(doc, {
+        startY: y,
+        head: ["Total Students", "Revenue Collected", "Pending Dues", "Avg Attendance", "Tests Conducted"],
+        body: [[
+          String(report.overview?.total_students || 0),
+          `Rs ${(report.overview?.total_revenue_collected || 0).toLocaleString()}`,
+          `Rs ${(report.overview?.pending_fees || 0).toLocaleString()}`,
+          `${report.overview?.avg_attendance || 0}%`,
+          String(report.overview?.tests_conducted || 0),
+        ]],
+      });
+
+      y += 8;
+
+      // Student table
+      y = addSectionTitle(doc, "Detailed Student Aggregation", y);
+      const sortedStudents = Array.isArray(report.students) ? [...report.students].sort((a, b) => {
+        const secA = a.student.section || "";
+        const secB = b.student.section || "";
+        const numA = parseInt((secA.match(/\d+/) || ["0"])[0], 10);
+        const numB = parseInt((secB.match(/\d+/) || ["0"])[0], 10);
+        if (numA !== numB) return numA - numB;
+        return secA.localeCompare(secB) || (a.student.name || "").localeCompare(b.student.name || "");
+      }) : [];
+      addTable(doc, {
+        startY: y,
+        head: ["#", "Student Name", "Section", "Attendance", "Test Avg", "Rank", "Fee Due"],
+        body: sortedStudents.map((row, i) => [
+          String(i + 1),
+          row.student.name,
+          row.student.section || "—",
+          `${row.attendance.percentage}%`,
+          `${row.tests.percentage}%`,
+          row.tests.rank !== "N/A" ? `#${row.tests.rank}` : "—",
+          `Rs ${row.fees.due.toLocaleString()}`,
+        ]),
+      });
+
+      downloadPdf(doc, `Report_${dateFrom}_${dateTo}.pdf`, addFooter);
+    } else {
+      // Student report card
+      const { doc, pageW, startY, addFooter } = await createPdf({
+        title: "Student Report Card",
+        subtitle: `${report.student?.name || "Student"}`,
+      });
+
+      let y = startY;
+
+      // Student info
+      y = addSectionTitle(doc, "Student Information", y);
+      y = addTable(doc, {
+        startY: y,
+        head: ["Name", "Class", "Section", "Guardian Contact"],
+        body: [[
+          report.student?.name || "—",
+          report.student?.className || "—",
+          report.student?.sectionName || "—",
+          report.student?.parent_phone || "—",
+        ]],
+      });
+
+      y += 6;
+
+      // Summary KPIs
+      y = addSectionTitle(doc, "Performance Summary", y);
+      y = addTable(doc, {
+        startY: y,
+        head: ["Attendance", "Days Present", "Test Average", "Outstanding Fees"],
+        body: [[
+          `${report.attendance?.percentage || 0}%`,
+          `${report.attendance?.present || 0} / ${report.attendance?.total_days || 0}`,
+          `${report.tests?.percentage || 0}%`,
+          `Rs ${(report.fees?.due || 0).toLocaleString()}`,
+        ]],
+      });
+
+      y += 6;
+
+      // Academic detail
+      if (Array.isArray(report.tests?.details) && report.tests.details.length > 0) {
+        y = addSectionTitle(doc, "Academic Performance", y);
+        addTable(doc, {
+          startY: y,
+          head: ["Test Name", "Date", "Marks", "Percentage", "Grade", "Rank"],
+          body: report.tests.details.map(t => {
+            const pct = parseFloat(t.percentage);
+            const grade = pct >= 90 ? "A+" : pct >= 80 ? "A" : pct >= 70 ? "B+" : pct >= 60 ? "B" : pct >= 50 ? "C" : pct >= 33 ? "D" : "F";
+            return [
+              t.test_name,
+              new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+              `${t.marks} / ${t.total_marks}`,
+              `${t.percentage}%`,
+              grade,
+              t.rank !== "N/A" ? String(t.rank) : "—",
+            ];
+          }),
+        });
+      }
+
+      downloadPdf(doc, `ReportCard_${report.student?.name?.replace(/\s+/g, "_") || "Student"}.pdf`, addFooter);
+    }
+
+    toast.success("PDF downloaded");
   }
 
   if (!role) return <div className="p-8 text-gray-500 font-medium">Loading...</div>;
 
-  const SCHOOL_NAME = "Alpha School";
+  const SCHOOL_NAME = "Intellogy Coaching";
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -235,7 +355,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Insights */}
-          <div className="card bg-slate-800 text-white border-0 p-5 relative overflow-hidden">
+          <div className="card bg-gray-900 text-white border-0 p-5 relative overflow-hidden">
              <div className="relative z-10">
                <h2 className="text-sm font-semibold tracking-wide flex items-center gap-2 mb-3 text-emerald-400 uppercase">
                  <TrendingUp size={15} /> Performance Summary
@@ -298,6 +418,7 @@ export default function ReportsPage() {
                      if (numA !== numB) return numA - numB;
                      return secA.localeCompare(secB) || (a.student.name || "").localeCompare(b.student.name || "");
                    })
+                   .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
                    .map((row, idx) => (
                     <tr key={idx}>
                       <td className="font-semibold text-gray-700">{row.student.name}</td>
@@ -318,6 +439,29 @@ export default function ReportsPage() {
                 </tbody>
               </table>
             </div>
+            {report?.students?.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between border-t border-gray-100 p-4 bg-white print:hidden">
+                <span className="text-sm text-gray-500 font-medium">
+                  Page {page} of {Math.ceil(report.students.length / PAGE_SIZE)}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(Math.ceil(report.students.length / PAGE_SIZE), p + 1))}
+                    disabled={page === Math.ceil(report.students.length / PAGE_SIZE)}
+                    className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
@@ -330,7 +474,7 @@ export default function ReportsPage() {
           {/* ═══════════════════════════════════════════════════════
               OFFICIAL REPORT CARD — Professional Design
               ═══════════════════════════════════════════════════════ */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden print:shadow-none print:border print:border-gray-300 print:rounded-none">
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden print:shadow-none print:border print:border-gray-300 print:rounded-none">
 
             {/* ── School Header Bar ── */}
             <div className="bg-slate-900 text-white px-6 sm:px-8 py-5 print:bg-white print:text-black print:border-b-2 print:border-black">

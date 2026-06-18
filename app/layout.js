@@ -2,7 +2,7 @@ import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 
 export const metadata = {
-  title: "Alpha School | Academic Excellence",
+  title: "Intellogy Coaching | Academic Excellence",
   description: "A modern management platform for schools. Track students, fees, attendance, and results with ease.",
 };
 

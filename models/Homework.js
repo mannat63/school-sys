@@ -9,6 +9,7 @@ const HomeworkSchema = new mongoose.Schema(
     section_id: { type: mongoose.Schema.Types.ObjectId, ref: "Section", required: true },
     teacher_id: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher", required: true },
     institute_id: { type: mongoose.Schema.Types.ObjectId, ref: "Institute", required: true },
+    drive_link: { type: String, default: "" },
   },
   { timestamps: true }
 );

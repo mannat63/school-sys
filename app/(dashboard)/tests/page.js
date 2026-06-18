@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FileText, Plus, X, Calendar, ClipboardList, Save, CheckCircle, Bell, Send, Edit2, Trash2 } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { FileText, Plus, X, Calendar, ClipboardList, Save, CheckCircle, Bell, Send, Edit2, Trash2, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
+import { createPdf, addTable, addSectionTitle, downloadPdf } from "@/lib/exportPdf";
 
 const defaultSubjects = [
   { name: "Physics", max_marks: 100 },
@@ -30,6 +31,10 @@ export default function TestsPage() {
   const [classes, setClasses] = useState([]);
   const [filterClass, setFilterClass] = useState("");
   const [filterSection, setFilterSection] = useState("");
+
+  const PAGE_SIZE = 30;
+  const [testPage, setTestPage] = useState(1);
+  const [modalPage, setModalPage] = useState(1);
 
   useEffect(() => {
     loadInitialData();
@@ -63,6 +68,13 @@ export default function TestsPage() {
      if (filterSection && filterSection !== (t.section_id?._id || t.section_id)) return false;
      return true;
   });
+
+  const testPages = Math.max(1, Math.ceil(filteredTests.length / PAGE_SIZE));
+  const paginatedTests = filteredTests.slice((testPage - 1) * PAGE_SIZE, testPage * PAGE_SIZE);
+
+  // Pagination for modal students
+  const studentPages = Math.max(1, Math.ceil(students.length / PAGE_SIZE));
+  const paginatedStudents = students.slice((modalPage - 1) * PAGE_SIZE, modalPage * PAGE_SIZE);
 
   async function handleCreateOrUpdateTest(e) {
     e.preventDefault();
@@ -137,10 +149,11 @@ export default function TestsPage() {
     setModalLoading(true);
     const [r, s] = await Promise.all([
       fetch(`/api/results?test_id=${test._id}`).then((r) => r.json()),
-      fetch(`/api/students?section_id=${test.section_id?._id || test.section_id}`).then((r) => r.json()),
+      fetch(`/api/students?section_id=${test.section_id?._id || test.section_id}&limit=200`).then((r) => r.json()),
     ]);
     setResults(Array.isArray(r) ? r : []);
-    setStudents(Array.isArray(s) ? s : []);
+    setStudents(Array.isArray(s) ? s : (s?.students || []));
+    setModalPage(1);
 
     const marks = {};
     if (Array.isArray(r)) {
@@ -430,17 +443,17 @@ export default function TestsPage() {
         <div className="flex flex-col sm:flex-row justify-between items-end mb-4 gap-4 border-b border-gray-200 pb-4">
           <h2 className="section-heading !mb-0">Recent Tests</h2>
           {role === "ADMIN" && (
-            <div className="flex gap-3">
+             <div className="flex gap-3">
                <div className="min-w-[130px]">
                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Filter by Class</label>
-                 <select value={filterClass} onChange={e => {setFilterClass(e.target.value); setFilterSection("")}} className="input-field text-xs py-1.5 h-auto">
+                 <select value={filterClass} onChange={e => {setFilterClass(e.target.value); setFilterSection(""); setTestPage(1);}} className="input-field text-xs py-1.5 h-auto">
                     <option value="">All Classes</option>
                     {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                  </select>
                </div>
                <div className="min-w-[130px]">
                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Filter by Section</label>
-                 <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="input-field text-xs py-1.5 h-auto" disabled={!filterClass}>
+                 <select value={filterSection} onChange={e => {setFilterSection(e.target.value); setTestPage(1);}} className="input-field text-xs py-1.5 h-auto" disabled={!filterClass}>
                     <option value="">All Sections</option>
                     {sections.filter(s => !filterClass || (s.class_id?._id || s.class_id) === filterClass).map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                  </select>
@@ -449,7 +462,7 @@ export default function TestsPage() {
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-          {filteredTests.map((t) => {
+          {paginatedTests.map((t) => {
             const totalMaxMarks = t.subjects?.reduce((sum, s) => sum + (s.max_marks || 0), 0) || 0;
             return (
               <div
@@ -533,6 +546,29 @@ export default function TestsPage() {
             </div>
           )}
         </div>
+        {testPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+            <span className="text-sm text-gray-500 font-medium">
+              Page {testPage} of {testPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTestPage(p => Math.max(1, p - 1))}
+                disabled={testPage === 1}
+                className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => setTestPage(p => Math.min(testPages, p + 1))}
+                disabled={testPage === testPages}
+                className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Marks Modal Popup ─── */}
@@ -573,7 +609,7 @@ export default function TestsPage() {
                 </div>
               ) : role === "STUDENT" ? (
                 <div className="px-6 py-5">
-                  {students.map((s) => {
+                  {paginatedStudents.map((s) => {
                     const totalScored = selectedTest.subjects?.reduce((sum, sub) => sum + Number(markForm[s._id]?.[sub.name] || 0), 0) || 0;
                     const overallMax = selectedTest.subjects?.reduce((sum, sub) => sum + (sub.max_marks || 0), 0) || 0;
                     const pct = overallMax > 0 ? ((totalScored / overallMax) * 100).toFixed(1) : 0;
@@ -607,7 +643,7 @@ export default function TestsPage() {
                              })}
                            </tbody>
                            <tfoot>
-                             <tr className="border-t-2 border-slate-300 bg-slate-800">
+                             <tr className="border-t-2 border-slate-300 bg-gray-900">
                                <td className="py-3.5 px-4 text-sm font-bold text-white uppercase tracking-wide">Total</td>
                                <td className="py-3.5 px-4 text-sm text-right text-slate-400 font-mono font-bold tabular-nums">{overallMax}</td>
                                <td className="py-3.5 px-4 text-right">
@@ -636,8 +672,9 @@ export default function TestsPage() {
                   })}
                 </div>
               ) : (
-                <table className="data-table min-w-full whitespace-nowrap">
-                  <thead>
+                <div className="flex flex-col h-full">
+                  <table className="data-table min-w-full whitespace-nowrap">
+                    <thead>
                     <tr>
                       <th className="sticky left-0 bg-gray-50 border-r border-gray-200">Student Name</th>
                       {selectedTest.subjects?.map((sub, idx) => (
@@ -647,7 +684,7 @@ export default function TestsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((s) => {
+                    {paginatedStudents.map((s) => {
                       const totalScored = selectedTest.subjects?.reduce((sum, sub) => sum + Number(markForm[s._id]?.[sub.name] || 0), 0) || 0;
                       const overallMax = selectedTest.subjects?.reduce((sum, sub) => sum + (sub.max_marks || 0), 0) || 0;
 
@@ -691,29 +728,91 @@ export default function TestsPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
+              )}
+              {studentPages > 1 && (
+                <div className="flex items-center justify-between border-t border-gray-100 p-4 bg-white mt-auto sticky bottom-0">
+                  <span className="text-xs text-gray-500 font-medium">
+                    Showing {(modalPage - 1) * PAGE_SIZE + 1} to {Math.min(modalPage * PAGE_SIZE, students.length)} of {students.length} students
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setModalPage(p => Math.max(1, p - 1))}
+                      disabled={modalPage === 1}
+                      className="p-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      onClick={() => setModalPage(p => Math.min(studentPages, p + 1))}
+                      disabled={modalPage === studentPages}
+                      className="p-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
             {/* Modal Footer */}
-            {role !== "STUDENT" && !modalLoading && (
+            {!modalLoading && (
               <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-                {(role === "ADMIN" || role === "TEACHER") && (
+                <div className="flex items-center gap-2">
+                  {(role === "ADMIN" || role === "TEACHER") && (
+                    <button
+                      onClick={() => notifyParents(selectedTest._id)}
+                      disabled={!!notifyingTestId || students.length === 0}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+                    >
+                      <Send size={14} />
+                      {notifyingTestId === selectedTest._id ? "Sending..." : "Notify All Parents"}
+                    </button>
+                  )}
                   <button
-                    onClick={() => notifyParents(selectedTest._id)}
-                    disabled={!!notifyingTestId || students.length === 0}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+                    onClick={async () => {
+                      if (students.length === 0) return;
+                      const sectionLabel = selectedTest.section_id?.class_id?.name
+                        ? `${selectedTest.section_id.class_id.name} · ${selectedTest.section_id.name}`
+                        : (selectedTest.section_id?.name || "Section");
+                      const { doc, startY, addFooter } = await createPdf({
+                        title: selectedTest.name,
+                        subtitle: `${sectionLabel} · ${new Date(selectedTest.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+                        landscape: (selectedTest.subjects?.length || 0) > 3,
+                      });
+                      const subjectNames = selectedTest.subjects?.map(s => s.name) || [];
+                      addTable(doc, {
+                        startY,
+                        head: ["#", "Student Name", ...subjectNames.map(n => `${n}`), "Total", "%"],
+                        body: students.map((s, i) => {
+                          const overallMax = selectedTest.subjects?.reduce((sum, sub) => sum + (sub.max_marks || 0), 0) || 0;
+                          const totalScored = selectedTest.subjects?.reduce((sum, sub) => sum + Number(markForm[s._id]?.[sub.name] || 0), 0) || 0;
+                          const pct = overallMax > 0 ? ((totalScored / overallMax) * 100).toFixed(1) : "0";
+                          return [
+                            String(i + 1),
+                            s.user_id?.name || s.parent_name,
+                            ...subjectNames.map(n => String(markForm[s._id]?.[n] ?? "—")),
+                            `${totalScored}/${overallMax}`,
+                            `${pct}%`,
+                          ];
+                        }),
+                      });
+                      downloadPdf(doc, `${selectedTest.name.replace(/\s+/g, "_")}_Marks.pdf`, addFooter);
+                    }}
+                    className="btn-secondary text-sm"
                   >
-                    <Send size={14} />
-                    {notifyingTestId === selectedTest._id ? "Sending..." : "Notify All Parents"}
+                    <Download size={14} /> PDF
+                  </button>
+                </div>
+                {role !== "STUDENT" && (
+                  <button
+                    onClick={saveMarks}
+                    disabled={saving || students.length === 0}
+                    className="btn-primary w-full sm:w-auto"
+                  >
+                    {saving ? "Saving..." : <><Save size={15} /> Save Marks</>}
                   </button>
                 )}
-                <button
-                  onClick={saveMarks}
-                  disabled={saving || students.length === 0}
-                  className="btn-primary w-full sm:w-auto"
-                >
-                  {saving ? "Saving..." : <><Save size={15} /> Save Marks</>}
-                </button>
               </div>
             )}
           </div>
